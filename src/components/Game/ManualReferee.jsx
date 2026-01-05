@@ -2,9 +2,10 @@ import React from 'react';
 import { useGame } from '../../context/GameContext';
 import { Button } from '../Shared/Button';
 import { GAME_PHASES } from '../../constants/roles';
+import { WinDeclaration } from './WinDeclaration';
 
 export const ManualReferee = () => {
-    const { state, dispatch, nextPhase, killPlayer } = useGame();
+    const { state, dispatch, nextPhase } = useGame();
     const { players, phase } = state;
 
     const toggleLife = (player) => {
@@ -17,11 +18,15 @@ export const ManualReferee = () => {
         });
     };
 
+    const handleEndGame = () => {
+        dispatch({ type: 'RESET_GAME' });
+    };
+
     return (
         <div className="fade-in" style={{ paddingBottom: '40px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <h2 style={{ fontSize: '2rem' }}>Referee Dashboard</h2>
-                <Button variant="secondary" onClick={() => nextPhase(GAME_PHASES.SETUP)} style={{ width: 'auto' }}>
+                <Button variant="secondary" onClick={handleEndGame} style={{ width: 'auto' }}>
                     End Game
                 </Button>
             </div>
@@ -45,10 +50,19 @@ export const ManualReferee = () => {
                         disabled={phase === GAME_PHASES.VOTING}
                     >Start Voting</Button>
                 </div>
+
                 <div style={{ marginTop: '16px', color: 'var(--primary)', fontWeight: 'bold' }}>
                     Current Phase: {phase}
                 </div>
+
+                {phase === GAME_PHASES.VOTING && (
+                    <p style={{ marginTop: '8px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                        Tip: Ask players to vote. If someone is eliminated, use the "Kill" button below.
+                    </p>
+                )}
             </div>
+
+            <WinDeclaration />
 
             <h3 style={{ marginBottom: '16px' }}>Player Status</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -60,7 +74,7 @@ export const ManualReferee = () => {
                         padding: '16px',
                         background: player.isAlive ? 'var(--bg-tertiary)' : 'rgba(239, 68, 68, 0.1)',
                         borderRadius: 'var(--radius-md)',
-                        borderLeft: `4px solid ${player.role.team === 'MAFIA' ? 'var(--danger)' : 'var(--success)'}`
+                        borderLeft: `4px solid ${player.role.color || (player.role.team === 'MAFIA' ? 'var(--danger)' : 'var(--success)')}`
                     }}>
                         <div>
                             <div style={{ fontWeight: 'bold', fontSize: '1.2rem', textDecoration: player.isAlive ? 'none' : 'line-through' }}>

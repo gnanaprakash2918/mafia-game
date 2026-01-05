@@ -10,17 +10,29 @@ export const AutoReferee = () => {
     const { players, settings } = state;
     const { speak, cancel } = useTTS();
 
-    // Local state for Night sub-phases (which role is waking up)
+    // Local state for Night sub-phases
     const [currentNightRoleIndex, setCurrentNightRoleIndex] = useState(-1);
     const [nightAction, setNightAction] = useState('SLEEP'); // SLEEP, WAKE, ACTION, CLOSE
 
-    // Get unique waking roles sorted by wakeOrder
-    const wakingRoles = [...new Set(
-        players
-            .filter(p => p.role.wakeOrder > 0)
-            .map(p => p.role)
-            .sort((a, b) => a.wakeOrder - b.wakeOrder)
-    )];
+    // Calculate unique waking sequence
+    // 1. Filter players with roles that have wakeOrder > 0
+    // 2. Sort by wakeOrder
+    // 3. Deduplicate by Role ID (so all Mafias wake once together)
+    const wakingPlayers = players.filter(p => p.role.wakeOrder > 0 && p.isAlive);
+    const sortedWakingRoles = wakingPlayers
+        .map(p => p.role)
+        .sort((a, b) => a.wakeOrder - b.wakeOrder);
+
+    // Dedupe logic: Keep first instance of each role ID
+    const uniqueWakingSequences = [];
+    const seenRoles = new Set();
+
+    sortedWakingRoles.forEach(role => {
+        if (!seenRoles.has(role.id)) {
+            uniqueWakingSequences.push(role);
+            seenRoles.add(role.id);
+        }
+    });
 
     // Timers
     const {
@@ -35,16 +47,14 @@ export const AutoReferee = () => {
     );
 
     const handleTimerComplete = () => {
-        // Determine what happens when timer ends
         if (state.phase === GAME_PHASES.DISCUSSION) {
             nextPhase(GAME_PHASES.VOTING);
         } else if (state.phase === GAME_PHASES.NIGHT_ACTIVE) {
-            // Auto-advance night if timer runs out (optional, maybe just warn)
-            handleNextNightStep();
+            // Optional: Auto-closing logic could go here, but manual next is safer for night
         }
     };
 
-    // Orchestrate Night Phase
+    // Orchestrate Night Phase Start
     useEffect(() => {
         if (state.phase === GAME_PHASES.NIGHT_INTRO) {
             speak("Everyone sleep. Close your eyes.", () => {
@@ -55,23 +65,23 @@ export const AutoReferee = () => {
         }
     }, [state.phase]);
 
-    // Orchestrate Night Steps
+    // Orchestrate Night Steps (Wake/Action/Close loop)
     useEffect(() => {
         if (state.phase === GAME_PHASES.NIGHT_ACTIVE && currentNightRoleIndex >= 0) {
-            if (currentNightRoleIndex >= wakingRoles.length) {
-                // Night over
+            // Check if we are done
+            if (currentNightRoleIndex >= uniqueWakingSequences.length) {
                 speak("Everyone wake up. It is now morning.", () => {
                     nextPhase(GAME_PHASES.DAY_INTRO);
                 });
                 return;
             }
 
-            const role = wakingRoles[currentNightRoleIndex];
+            const role = uniqueWakingSequences[currentNightRoleIndex];
 
             if (nightAction === 'WAKE') {
                 speak(`${role.name}, wake up.`, () => {
                     setNightAction('ACTION');
-                    resetTimer(20); // Give 20s for action
+                    resetTimer(20);
                     startTimer();
                 });
             } else if (nightAction === 'CLOSE') {
@@ -87,7 +97,6 @@ export const AutoReferee = () => {
     // Orchestrate Day Phase
     useEffect(() => {
         if (state.phase === GAME_PHASES.DAY_INTRO) {
-            // Transition immediately to discussion after intro
             nextPhase(GAME_PHASES.DISCUSSION);
             resetTimer(settings.timers.discussion);
             startTimer();
@@ -102,7 +111,7 @@ export const AutoReferee = () => {
     };
 
     if (state.phase === GAME_PHASES.NIGHT_ACTIVE) {
-        const currentRole = wakingRoles[currentNightRoleIndex];
+        const currentRole = uniqueWakingSequences[currentNightRoleIndex];
         return (
             <div className="fade-in" style={{ textAlign: 'center', marginTop: '40px' }}>
                 <h2 style={{ fontSize: '3rem', marginBottom: '24px' }}>Night Phase</h2>
@@ -129,6 +138,19 @@ export const AutoReferee = () => {
                     {formattedTime}
                 </div>
                 <Button onClick={() => nextPhase(GAME_PHASES.VOTING)}>Start Voting</Button>
+            </div>
+        );
+    }
+
+    // Voting Phase (Auto-Referee View)
+    if (state.phase === GAME_PHASES.VOTING) {
+        return (
+            <div className="fade-in" style={{ textAlign: 'center', marginTop: '40px' }}>
+                <h2 style={{ fontSize: '3rem', marginBottom: '24px' }}>Voting Time</h2>
+                <div style={{ fontSize: '1.2rem', marginBottom: '40px', color: 'var(--text-muted)' }}>
+                    Ask players to vote. Eliminate the loser manually if needed using Referee controls.
+                </div>
+                <Button onClick={() => nextPhase(GAME_PHASES.NIGHT_INTRO)}>End Day (Start Night)</Button>
             </div>
         );
     }

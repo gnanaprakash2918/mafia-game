@@ -10,6 +10,11 @@ export const RoleReveal = () => {
 
     const currentPlayer = players[currentTurnIndex];
 
+    // Find partners if current player is Mafia
+    const partners = currentPlayer.role.team === 'MAFIA'
+        ? players.filter(p => p.id !== currentPlayer.id && p.role.team === 'MAFIA')
+        : [];
+
     const handleReveal = () => {
         setIsRevealed(true);
     };
@@ -51,15 +56,31 @@ export const RoleReveal = () => {
                         <h2 style={{ fontSize: '1.5rem', marginBottom: '24px', color: 'var(--text-muted)' }}>You are</h2>
                         <h1 style={{
                             fontSize: '3.5rem',
-                            color: currentPlayer.role.team === 'MAFIA' ? 'var(--danger)' : 'var(--success)',
+                            color: currentPlayer.role.color || (currentPlayer.role.team === 'MAFIA' ? 'var(--danger)' : 'var(--success)'),
                             marginBottom: '16px',
                             textShadow: '0 0 20px rgba(0,0,0,0.5)'
                         }}>
                             {currentPlayer.role.name}
                         </h1>
-                        <p style={{ fontSize: '1.2rem', marginBottom: '48px', lineHeight: '1.6' }}>
+                        <p style={{ fontSize: '1.2rem', marginBottom: '24px', lineHeight: '1.6' }}>
                             {currentPlayer.role.description}
                         </p>
+
+                        {partners.length > 0 && (
+                            <div style={{
+                                marginBottom: '32px',
+                                padding: '16px',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--danger)'
+                            }}>
+                                <h3 style={{ color: 'var(--danger)', marginBottom: '8px', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Your Partners</h3>
+                                <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
+                                    {partners.map(p => p.name).join(', ')}
+                                </div>
+                            </div>
+                        )}
+
                         <Button onClick={handleNext}>
                             {currentTurnIndex < players.length - 1 ? 'Pass to Next Player' : 'Start Night'}
                         </Button>

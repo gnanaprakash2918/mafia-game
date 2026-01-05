@@ -4,7 +4,7 @@ import { GAME_PHASES } from '../constants/roles';
 const GameContext = createContext();
 
 const initialState = {
-    phase: GAME_PHASES.SETUP,
+    phase: GAME_PHASES.WELCOME,
     players: [], // { id, name, role, isAlive, status }
     settings: {
         playerCount: 5,

@@ -4,6 +4,7 @@ import { SetupScreen } from './components/Setup/SetupScreen';
 import { RoleReveal } from './components/Game/RoleReveal';
 import { AutoReferee } from './components/Game/AutoReferee';
 import { ManualReferee } from './components/Game/ManualReferee';
+import { WelcomeScreen } from './components/Setup/WelcomeScreen';
 import { GAME_PHASES } from './constants/roles';
 
 function App() {
@@ -11,6 +12,8 @@ function App() {
 
     const renderPhase = () => {
         switch (state.phase) {
+            case GAME_PHASES.WELCOME:
+                return <WelcomeScreen />;
             case GAME_PHASES.SETUP:
                 return <SetupScreen />;
             case GAME_PHASES.ROLE_REVEAL:
