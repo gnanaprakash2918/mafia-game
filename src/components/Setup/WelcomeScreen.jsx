@@ -34,16 +34,12 @@ export const WelcomeScreen = () => {
                 marginBottom: '48px',
                 lineHeight: '1.6'
             }}>
-                The ultimate party game of deduction, deception, and survival.
+                By gnanaprakash2918
             </p>
 
             <Button onClick={() => nextPhase(GAME_PHASES.SETUP)} style={{ maxWidth: '300px' }}>
                 Start New Game
             </Button>
-
-            <div style={{ marginTop: '32px', fontSize: '0.8rem', color: 'rgba(255,255,255,0.2)' }}>
-                v1.1 Premium Edition
-            </div>
         </div>
     );
 };

@@ -52,7 +52,13 @@ export const RoleReveal = () => {
                         <Button onClick={handleReveal}>Reveal Role</Button>
                     </>
                 ) : (
-                    <div className="card-flip-animation">
+                    <div className="card-flip-enter" style={{
+                        background: 'linear-gradient(145deg, var(--bg-secondary), var(--bg-tertiary))',
+                        padding: '32px',
+                        borderRadius: 'var(--radius-lg)',
+                        border: '1px solid rgba(255,255,255,0.05)',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+                    }}>
                         <h2 style={{ fontSize: '1.5rem', marginBottom: '24px', color: 'var(--text-muted)' }}>You are</h2>
                         <h1 style={{
                             fontSize: '3.5rem',

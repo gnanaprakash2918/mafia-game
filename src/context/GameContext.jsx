@@ -10,11 +10,15 @@ const initialState = {
         playerCount: 5,
         roles: {}, // { [roleId]: count }
         timers: {
-            discussion: 180, // seconds
+            night: 30,
+            day: 10, // Day Intro/Overview
+            discussion: 180,
             voting: 60,
             unlimited: false,
+            autoStartNight: false, // User requested toggle
         },
     },
+    winner: null, // { team: 'MAFIA'|'VILLAGE'|'NEUTRAL', message: '...' }
     currentTurnIndex: 0, // For role reveal or active night turn
     round: 1,
 };
@@ -54,6 +58,8 @@ const gameReducer = (state, action) => {
                 ...state,
                 currentTurnIndex: state.currentTurnIndex + 1,
             };
+        case 'DECLARE_WIN':
+            return { ...state, winner: action.payload, phase: GAME_PHASES.GAME_OVER };
         case 'RESET_GAME':
             return initialState;
         default:
@@ -80,11 +86,40 @@ export const GameProvider = ({ children }) => {
         dispatch({ type: 'NEXT_PHASE', payload: phase });
     }, []);
 
+    // Helper to check for win conditions
+    const checkWinCondition = useCallback((currentPlayers) => {
+        const activePlayers = currentPlayers.filter(p => p.isAlive);
+        const mafiaCount = activePlayers.filter(p => p.role.team === 'MAFIA').length;
+        const villageCount = activePlayers.filter(p => p.role.team === 'VILLAGE').length;
+        const totalAlive = activePlayers.length;
+
+        // Village Wins: No Mafia left
+        if (mafiaCount === 0) {
+            return { team: 'VILLAGE', message: 'All Mafia have been eliminated. Village Wins!' };
+        }
+
+        // Mafia Wins: Mafia Majority (>= 50% of living players usually, or simple majority)
+        // Strictly > 50% for immediate win, or >= 50% depending on rules.
+        // Usually if Mafia >= Non-Mafia, Mafia wins (as they can control vote).
+        if (mafiaCount >= (totalAlive - mafiaCount)) {
+            return { team: 'MAFIA', message: 'Mafia have gained majority control. Mafia Wins!' };
+        }
+
+        return null;
+    }, []);
+
     const killPlayer = useCallback((playerId) => {
+        // We need to access state to check win, but usually state is stale in callback.
+        // Dispatch handles update. We can check win in Effect in App or here if we access latest state.
+        // For simplicity: Update state, then App.jsx or AutoReferee checks win.
         dispatch({
             type: 'UPDATE_PLAYER_STATUS',
             payload: { id: playerId, updates: { isAlive: false } },
         });
+    }, []);
+
+    const declareWin = useCallback((team, message) => {
+        dispatch({ type: 'DECLARE_WIN', payload: { team, message } });
     }, []);
 
     const value = {
@@ -94,6 +129,8 @@ export const GameProvider = ({ children }) => {
         startGame,
         nextPhase,
         killPlayer,
+        declareWin,
+        checkWinCondition, // Exported for components to use
         dispatch,
     };
 
