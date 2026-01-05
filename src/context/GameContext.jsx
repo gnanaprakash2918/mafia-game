@@ -129,10 +129,15 @@ export const GameProvider = ({ children }) => {
     }, []);
 
     // Helper to check for win conditions
-    const checkWinCondition = useCallback((currentPlayers) => {
+    // For neutral role wins (Jester, Executioner), pass the eliminated player
+    const checkWinCondition = useCallback((currentPlayers, eliminatedPlayer = null, wasVotedOut = false) => {
+        // Jester wins if voted out
+        if (eliminatedPlayer && wasVotedOut && eliminatedPlayer.role.id === 'jester') {
+            return { team: 'NEUTRAL', message: `${eliminatedPlayer.name} (Jester) was lynched! Jester Wins!` };
+        }
+
         const activePlayers = currentPlayers.filter(p => p.isAlive);
         const mafiaCount = activePlayers.filter(p => p.role.team === 'MAFIA').length;
-        const villageCount = activePlayers.filter(p => p.role.team === 'VILLAGE').length;
         const totalAlive = activePlayers.length;
 
         // Village Wins: No Mafia left
@@ -140,9 +145,7 @@ export const GameProvider = ({ children }) => {
             return { team: 'VILLAGE', message: 'All Mafia have been eliminated. Village Wins!' };
         }
 
-        // Mafia Wins: Mafia Majority (>= 50% of living players usually, or simple majority)
-        // Strictly > 50% for immediate win, or >= 50% depending on rules.
-        // Usually if Mafia >= Non-Mafia, Mafia wins (as they can control vote).
+        // Mafia Wins: Mafia Majority
         if (mafiaCount >= (totalAlive - mafiaCount)) {
             return { team: 'MAFIA', message: 'Mafia have gained majority control. Mafia Wins!' };
         }

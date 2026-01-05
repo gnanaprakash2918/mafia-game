@@ -192,11 +192,10 @@ const TimerConfigStep = ({ timers, setTimers, onNext, onBack }) => {
         </div>
     );
 };
-
-const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack, manualMode, setManualMode }) => (
+const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack }) => (
     <div className="setup-step fade-in">
         <h2 style={{ fontSize: '1.5rem', marginBottom: '24px' }}>Enter Names</h2>
-        <div style={{ height: '40vh', overflowY: 'auto', paddingRight: '12px', marginBottom: '24px' }}>
+        <div style={{ height: '50vh', overflowY: 'auto', paddingRight: '12px', marginBottom: '24px' }}>
             {Array.from({ length: playerCount }).map((_, i) => (
                 <div key={i} style={{ marginBottom: '12px' }}>
                     <input
@@ -211,22 +210,11 @@ const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack, manualMod
                         style={{
                             width: '100%', padding: '16px', background: 'var(--bg-tertiary)',
                             border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-md)',
-                            color: 'white', outline: 'none'
+                            color: 'white', outline: 'none', fontSize: '1rem'
                         }}
                     />
                 </div>
             ))}
-        </div>
-
-        <div style={{ marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center' }}>
-            <input
-                type="checkbox"
-                id="manualMode"
-                checked={manualMode}
-                onChange={(e) => setManualMode(e.target.checked)}
-                style={{ width: '20px', height: '20px' }}
-            />
-            <label htmlFor="manualMode" style={{ fontSize: '1.1rem', cursor: 'pointer' }}>Enable Manual Referee Mode</label>
         </div>
 
         <div style={{ display: 'flex', gap: '12px' }}>
@@ -242,9 +230,8 @@ export const SetupScreen = () => {
     const [count, setCount] = useState(5);
     const [roles, setRoles] = useState({});
     const [names, setNames] = useState([]);
-    const [manualMode, setManualMode] = useState(false);
     const [timers, setTimers] = useState({
-        night: 30, day: 10, discussion: 180, voting: 60, unlimited: false, autoStartNight: false
+        night: 20, day: 5, discussion: 180, voting: 60, unlimited: false, autoStartNight: false
     });
 
     React.useEffect(() => {
@@ -275,7 +262,7 @@ export const SetupScreen = () => {
             });
         });
 
-        updateSettings({ playerCount: count, roles, manualMode, timers });
+        updateSettings({ playerCount: count, roles, timers });
         setPlayers(playerList);
         startGame();
     };
@@ -285,7 +272,7 @@ export const SetupScreen = () => {
             {step === 1 && <PlayerCountStep count={count} setCount={setCount} onNext={() => setStep(2)} />}
             {step === 2 && <RoleSelectionStep playerCount={count} roles={roles} setRoles={setRoles} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
             {step === 3 && <TimerConfigStep timers={timers} setTimers={setTimers} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
-            {step === 4 && <NameEntryStep playerCount={count} names={names} setNames={setNames} onNext={handleFinishSetup} onBack={() => setStep(3)} manualMode={manualMode} setManualMode={setManualMode} />}
+            {step === 4 && <NameEntryStep playerCount={count} names={names} setNames={setNames} onNext={handleFinishSetup} onBack={() => setStep(3)} />}
         </div>
     );
 };
