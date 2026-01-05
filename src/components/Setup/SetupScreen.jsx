@@ -154,35 +154,140 @@ const RoleSelectionStep = ({ playerCount, roles, setRoles, onNext, onBack }) => 
 const TimerEntry = ({ label, value, onChange }) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)', padding: '12px', borderRadius: 'var(--radius-sm)' }}>
         <span style={{ fontWeight: 'bold' }}>{label}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button onClick={() => onChange(Math.max(5, value - 5))} style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white' }}>-</button>
-            <span style={{ minWidth: '30px', textAlign: 'center' }}>{value}s</span>
-            <button onClick={() => onChange(value + 5)} style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--primary)', border: 'none', color: 'white' }}>+</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button onClick={() => onChange(Math.max(5, value - 5))} style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer' }}>-</button>
+            <input
+                type="number"
+                value={value}
+                onChange={(e) => onChange(Math.max(0, parseInt(e.target.value) || 0))}
+                style={{
+                    width: '60px',
+                    padding: '6px',
+                    textAlign: 'center',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'white',
+                    fontSize: '0.9rem'
+                }}
+            />
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>sec</span>
+            <button onClick={() => onChange(value + 5)} style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'var(--primary)', border: 'none', color: 'white', cursor: 'pointer' }}>+</button>
         </div>
     </div>
 );
 
-const TimerConfigStep = ({ timers, setTimers, onNext, onBack }) => {
+// Default night steps
+const DEFAULT_NIGHT_STEPS = [
+    { id: 'SLEEP', label: 'Everyone Sleep', duration: 5 },
+    { id: 'MAFIA_WAKE', label: 'Mafia Wake', duration: 8 },
+    { id: 'MAFIA_CLOSE', label: 'Mafia Close', duration: 3 },
+    { id: 'DETECTIVE_WAKE', label: 'Detective Wake', duration: 8 },
+    { id: 'DETECTIVE_CLOSE', label: 'Detective Close', duration: 3 },
+    { id: 'DOCTOR_WAKE', label: 'Doctor Wake', duration: 8 },
+    { id: 'DOCTOR_CLOSE', label: 'Doctor Close', duration: 3 },
+    { id: 'WAKE_ALL', label: 'Everyone Wake', duration: 5 },
+];
+
+const TimerConfigStep = ({ timers, setTimers, nightSteps, setNightSteps, onNext, onBack }) => {
     const updateTimer = (key, val) => setTimers({ ...timers, [key]: val });
+
+    const updateStepDuration = (idx, val) => {
+        const updated = [...nightSteps];
+        updated[idx] = { ...updated[idx], duration: Math.max(0, parseInt(val) || 0) };
+        setNightSteps(updated);
+    };
+
+    const moveStep = (idx, dir) => {
+        const newIdx = idx + dir;
+        if (newIdx < 0 || newIdx >= nightSteps.length) return;
+        const updated = [...nightSteps];
+        [updated[idx], updated[newIdx]] = [updated[newIdx], updated[idx]];
+        setNightSteps(updated);
+    };
+
+    const deleteStep = (idx) => {
+        if (nightSteps.length <= 2) return;
+        setNightSteps(nightSteps.filter((_, i) => i !== idx));
+    };
+
+    const addCustomStep = (label) => {
+        if (!label.trim()) return;
+        const newStep = { id: `CUSTOM_${Date.now()}`, label: label.trim(), duration: 8 };
+        setNightSteps([...nightSteps.slice(0, -1), newStep, nightSteps[nightSteps.length - 1]]);
+    };
+
+    const setAllWakeDurations = (val) => {
+        setNightSteps(nightSteps.map(s => s.id.includes('WAKE') && s.id !== 'WAKE_ALL' ? { ...s, duration: parseInt(val) || 0 } : s));
+    };
+
+    const setAllCloseDurations = (val) => {
+        setNightSteps(nightSteps.map(s => s.id.includes('CLOSE') ? { ...s, duration: parseInt(val) || 0 } : s));
+    };
 
     return (
         <div className="setup-step fade-in">
             <h2 style={{ fontSize: '1.5rem', marginBottom: '24px' }}>Game Settings</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '32px' }}>
+
+            {/* Phase Timers */}
+            <h3 style={{ fontSize: '1rem', marginBottom: '12px', color: 'var(--text-muted)' }}>Phase Timers</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
                 <TimerEntry label="Day Intro" value={timers.day} onChange={(v) => updateTimer('day', v)} />
                 <TimerEntry label="Discussion" value={timers.discussion} onChange={(v) => updateTimer('discussion', v)} />
                 <TimerEntry label="Voting" value={timers.voting} onChange={(v) => updateTimer('voting', v)} />
-                <TimerEntry label="Night Actions" value={timers.night} onChange={(v) => updateTimer('night', v)} />
+            </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)', padding: '12px', borderRadius: 'var(--radius-sm)' }}>
-                    <span>Auto-Start Night</span>
-                    <input
-                        type="checkbox"
-                        checked={timers.autoStartNight}
-                        onChange={(e) => updateTimer('autoStartNight', e.target.checked)}
-                        style={{ width: '20px', height: '20px', accentColor: 'var(--primary)' }}
-                    />
+            {/* Bulk Edit */}
+            <h3 style={{ fontSize: '1rem', marginBottom: '12px', color: 'var(--text-muted)' }}>Quick Set All</h3>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-tertiary)', padding: '8px 12px', borderRadius: 'var(--radius-sm)' }}>
+                    <span style={{ fontSize: '0.85rem' }}>Wake:</span>
+                    <input type="number" defaultValue={8} onBlur={(e) => setAllWakeDurations(e.target.value)} style={{ width: '45px', padding: '4px', textAlign: 'center', background: 'var(--bg-secondary)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', color: 'white' }} />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>s</span>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-tertiary)', padding: '8px 12px', borderRadius: 'var(--radius-sm)' }}>
+                    <span style={{ fontSize: '0.85rem' }}>Close:</span>
+                    <input type="number" defaultValue={3} onBlur={(e) => setAllCloseDurations(e.target.value)} style={{ width: '45px', padding: '4px', textAlign: 'center', background: 'var(--bg-secondary)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', color: 'white' }} />
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>s</span>
+                </div>
+            </div>
+
+            {/* Night Steps Config */}
+            <h3 style={{ fontSize: '1rem', marginBottom: '12px', color: 'var(--text-muted)' }}>Night Sequence</h3>
+            <div style={{ maxHeight: '30vh', overflowY: 'auto', marginBottom: '12px' }}>
+                {nightSteps.map((step, idx) => (
+                    <div key={step.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px',
+                        background: 'var(--bg-tertiary)', padding: '6px 10px', borderRadius: 'var(--radius-sm)'
+                    }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                            <button onClick={() => moveStep(idx, -1)} disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1, background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '0.6rem', padding: 0 }}>▲</button>
+                            <button onClick={() => moveStep(idx, 1)} disabled={idx === nightSteps.length - 1} style={{ opacity: idx === nightSteps.length - 1 ? 0.3 : 1, background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '0.6rem', padding: 0 }}>▼</button>
+                        </div>
+                        <span style={{ flex: 1, fontSize: '0.85rem' }}>{step.label}</span>
+                        <input
+                            type="number"
+                            value={step.duration}
+                            onChange={(e) => updateStepDuration(idx, e.target.value)}
+                            style={{ width: '45px', padding: '3px', textAlign: 'center', background: 'var(--bg-secondary)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', color: 'white', fontSize: '0.85rem' }}
+                        />
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>s</span>
+                        {step.id.startsWith('CUSTOM_') && (
+                            <button onClick={() => deleteStep(idx)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.9rem' }}>✕</button>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            {/* Add Custom Step */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+                <input
+                    type="text"
+                    placeholder="Add custom step..."
+                    id="customStepInput"
+                    style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 'var(--radius-sm)', color: 'white' }}
+                />
+                <Button variant="secondary" onClick={() => { const inp = document.getElementById('customStepInput'); addCustomStep(inp.value); inp.value = ''; }} style={{ padding: '8px 12px' }}>+ Add</Button>
             </div>
 
             <div style={{ display: 'flex', gap: '12px' }}>
@@ -231,8 +336,9 @@ export const SetupScreen = () => {
     const [roles, setRoles] = useState({});
     const [names, setNames] = useState([]);
     const [timers, setTimers] = useState({
-        night: 20, day: 5, discussion: 180, voting: 60, unlimited: false, autoStartNight: false
+        night: 15, day: 5, discussion: 180, voting: 60, unlimited: false, autoStartNight: false
     });
+    const [nightSteps, setNightSteps] = useState(DEFAULT_NIGHT_STEPS);
 
     React.useEffect(() => {
         setNames(prev => {
@@ -262,7 +368,7 @@ export const SetupScreen = () => {
             });
         });
 
-        updateSettings({ playerCount: count, roles, timers });
+        updateSettings({ playerCount: count, roles, timers, nightSteps });
         setPlayers(playerList);
         startGame();
     };
@@ -271,8 +377,9 @@ export const SetupScreen = () => {
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             {step === 1 && <PlayerCountStep count={count} setCount={setCount} onNext={() => setStep(2)} />}
             {step === 2 && <RoleSelectionStep playerCount={count} roles={roles} setRoles={setRoles} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
-            {step === 3 && <TimerConfigStep timers={timers} setTimers={setTimers} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
+            {step === 3 && <TimerConfigStep timers={timers} setTimers={setTimers} nightSteps={nightSteps} setNightSteps={setNightSteps} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
             {step === 4 && <NameEntryStep playerCount={count} names={names} setNames={setNames} onNext={handleFinishSetup} onBack={() => setStep(3)} />}
         </div>
     );
 };
+

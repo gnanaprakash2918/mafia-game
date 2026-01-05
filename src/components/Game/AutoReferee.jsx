@@ -7,21 +7,24 @@ import { WinDeclaration } from './WinDeclaration';
 import { ActionLog } from './ActionLog';
 import { RoleInfoPopup } from '../Shared/RoleInfoPopup';
 
-// Night sequence steps
-const NIGHT_STEPS = [
-    { id: 'SLEEP', label: '☽ Everyone Sleep', order: 0 },
-    { id: 'MAFIA_WAKE', label: '🔫 Mafia Wake', order: 1 },
-    { id: 'MAFIA_CLOSE', label: '🔫 Mafia Close', order: 2 },
-    { id: 'DETECTIVE_WAKE', label: '🔍 Detective Wake', order: 3 },
-    { id: 'DETECTIVE_CLOSE', label: '🔍 Detective Close', order: 4 },
-    { id: 'DOCTOR_WAKE', label: '💉 Doctor Wake', order: 5 },
-    { id: 'DOCTOR_CLOSE', label: '💉 Doctor Close', order: 6 },
-    { id: 'WAKE_ALL', label: '☀ Everyone Wake', order: 7 },
+// Night sequence steps with default durations
+const DEFAULT_NIGHT_STEPS = [
+    { id: 'SLEEP', label: 'Everyone Sleep', duration: 5 },
+    { id: 'MAFIA_WAKE', label: 'Mafia Wake', duration: 8 },
+    { id: 'MAFIA_CLOSE', label: 'Mafia Close', duration: 3 },
+    { id: 'DETECTIVE_WAKE', label: 'Detective Wake', duration: 8 },
+    { id: 'DETECTIVE_CLOSE', label: 'Detective Close', duration: 3 },
+    { id: 'DOCTOR_WAKE', label: 'Doctor Wake', duration: 8 },
+    { id: 'DOCTOR_CLOSE', label: 'Doctor Close', duration: 3 },
+    { id: 'WAKE_ALL', label: 'Everyone Wake', duration: 5 },
 ];
 
 export const AutoReferee = () => {
     const { state, dispatch, nextPhase, checkWinCondition, declareWin, logAction } = useGame();
     const { players, settings, day, phase, logs, nightStep } = state;
+
+    // Get night steps from settings or use defaults
+    const NIGHT_STEPS = settings.nightSteps || DEFAULT_NIGHT_STEPS;
 
     // Night action tracking
     const [showActionModal, setShowActionModal] = useState(false);
@@ -47,27 +50,32 @@ export const AutoReferee = () => {
     const aliveDoctors = useMemo(() => players.filter(p => p.isAlive && p.role.id === 'doctor'), [players]);
     const alivePlayers = useMemo(() => players.filter(p => p.isAlive), [players]);
 
-    // Timer - get duration based on current phase
+    // Timer - get duration based on current phase or step
     const getPhaseDuration = (targetPhase) => {
         const p = targetPhase || phase;
         if (p === GAME_PHASES.DISCUSSION) return settings.timers.discussion || 180;
         if (p === GAME_PHASES.VOTING) return settings.timers.voting || 60;
-        if (p === GAME_PHASES.DAY_INTRO) return settings.timers.day || 10;
-        return settings.timers.night || 30;
+        if (p === GAME_PHASES.DAY_INTRO) return settings.timers.day || 5;
+        return settings.timers.night || 15;
+    };
+
+    const getStepDuration = (stepId) => {
+        const step = NIGHT_STEPS.find(s => s.id === stepId);
+        return step?.duration || 15;
     };
 
     const { timeLeft, start: startTimer, reset: resetTimer, formattedTime, pause, isRunning } = useTimer(
         getPhaseDuration(), settings.timers.unlimited, () => { }
     );
 
-    // Night step handler - starts timer
+    // Night step handler - starts timer with step-specific duration
     const setNightStep = (stepId) => {
         dispatch({ type: 'SET_NIGHT_STEP', payload: stepId });
         const step = NIGHT_STEPS.find(s => s.id === stepId);
         if (step) logAction(step.label);
 
-        // Start timer on any step
-        resetTimer(settings.timers.night || 30);
+        // Start timer with step-specific duration
+        resetTimer(getStepDuration(stepId));
         startTimer();
 
         if (stepId === 'WAKE_ALL') {
@@ -216,75 +224,81 @@ export const AutoReferee = () => {
                 <div style={{ fontSize: '4rem', fontFamily: 'monospace', fontWeight: 'bold', color: timeLeft < 10 && timeLeft > 0 ? 'var(--danger)' : 'white' }}>
                     {formattedTime}
                 </div>
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '12px', flexWrap: 'wrap' }}>
-                    <Button variant="secondary" onClick={isRunning ? pause : startTimer} style={{ ...btnStyle, width: 'auto', padding: '8px 16px' }}>
-                        {isRunning ? '⏸ Pause' : '▶ Start'}
+
+                {/* Main Controls - Icon only, single line */}
+                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginTop: '12px' }}>
+                    <Button variant="secondary" onClick={() => {
+                        if (phase === GAME_PHASES.DISCUSSION) advancePhase(GAME_PHASES.DAY_INTRO);
+                        else if (phase === GAME_PHASES.VOTING) advancePhase(GAME_PHASES.DISCUSSION);
+                        else if (phase === GAME_PHASES.DAY_INTRO) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
+                        else if (isNight && getCurrentStepIndex() > 0) setNightStep(NIGHT_STEPS[getCurrentStepIndex() - 1].id);
+                    }} style={{ padding: '10px 14px', minHeight: '40px' }}>⏮</Button>
+
+                    <Button variant="secondary" onClick={isRunning ? pause : startTimer} style={{ padding: '10px 14px', minHeight: '40px' }}>
+                        {isRunning ? '⏸' : '▶'}
                     </Button>
-                    <Button variant="secondary" onClick={() => resetTimer(getPhaseDuration())} style={{ ...btnStyle, width: 'auto', padding: '8px 16px' }}>↺ Reset</Button>
-                    <Button variant="secondary" onClick={() => resetTimer(0)} style={{ ...btnStyle, width: 'auto', padding: '8px 16px' }}>⏭ Skip</Button>
-                </div>
-            </div>
 
-            {/* NIGHT STEPS */}
-            {isNight && (
-                <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                    <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Night Sequence</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                        {NIGHT_STEPS.map((step, idx) => {
-                            const currentIdx = getCurrentStepIndex();
-                            const isActive = nightStep === step.id;
-                            const isCompleted = currentIdx > idx;
-                            return (
-                                <Button
-                                    key={step.id}
-                                    variant={isActive ? 'primary' : 'secondary'}
-                                    onClick={() => setNightStep(step.id)}
-                                    style={{
-                                        ...btnStyle,
-                                        opacity: isCompleted ? 0.5 : 1,
-                                        border: isActive ? '2px solid var(--primary)' : 'none',
-                                        boxShadow: isActive ? '0 0 10px var(--primary-glow)' : 'none'
-                                    }}
-                                >
-                                    {step.label}
-                                </Button>
-                            );
-                        })}
+                    <Button variant="secondary" onClick={() => resetTimer(isNight ? getStepDuration(nightStep) : getPhaseDuration())} style={{ padding: '10px 14px', minHeight: '40px' }}>↺</Button>
+
+                    <Button variant="secondary" onClick={() => {
+                        if (phase === GAME_PHASES.DAY_INTRO) advancePhase(GAME_PHASES.DISCUSSION);
+                        else if (phase === GAME_PHASES.DISCUSSION) advancePhase(GAME_PHASES.VOTING);
+                        else if (phase === GAME_PHASES.VOTING) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
+                        else if (isNight) setNightStep('WAKE_ALL');
+                    }} style={{ padding: '10px 14px', minHeight: '40px' }}>⏭</Button>
+                </div>
+
+                {/* Night Steps - Swipe Style */}
+                {isNight && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
+                        <Button
+                            variant="secondary"
+                            onClick={() => getCurrentStepIndex() > 0 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() - 1].id)}
+                            disabled={getCurrentStepIndex() <= 0}
+                            style={{ padding: '8px 12px', opacity: getCurrentStepIndex() <= 0 ? 0.3 : 1 }}
+                        >◀</Button>
+                        <div style={{
+                            background: 'var(--bg-tertiary)',
+                            padding: '12px 20px',
+                            borderRadius: 'var(--radius-md)',
+                            minWidth: '160px',
+                            textAlign: 'center',
+                            border: '2px solid var(--primary)'
+                        }}>
+                            <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
+                                {NIGHT_STEPS[getCurrentStepIndex()]?.label || 'Night'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {getCurrentStepIndex() + 1} / {NIGHT_STEPS.length}
+                            </div>
+                        </div>
+                        <Button
+                            variant="secondary"
+                            onClick={() => getCurrentStepIndex() < NIGHT_STEPS.length - 1 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() + 1].id)}
+                            disabled={getCurrentStepIndex() >= NIGHT_STEPS.length - 1}
+                            style={{ padding: '8px 12px', opacity: getCurrentStepIndex() >= NIGHT_STEPS.length - 1 ? 0.3 : 1 }}
+                        >▶</Button>
                     </div>
-                    {/* Skip buttons */}
-                    {isMafiaWake && !hasMafiaActed && (
-                        <Button variant="secondary" onClick={() => { logAction('Mafia chose not to kill'); setRoundActions(prev => ({ ...prev, mafiaKill: { target: null, killer: 'None' } })); setNightStep('MAFIA_CLOSE'); }} style={{ ...btnStyle, marginTop: '8px', width: '100%' }}>
-                            Skip Kill (No one dies)
-                        </Button>
-                    )}
-                    {isDetWake && !hasDetectiveActed && (
-                        <Button variant="secondary" onClick={() => { logAction('Detective skipped'); setRoundActions(prev => ({ ...prev, detectiveCheck: { target: null } })); setNightStep('DETECTIVE_CLOSE'); }} style={{ ...btnStyle, marginTop: '8px', width: '100%' }}>
-                            Skip Check
-                        </Button>
-                    )}
-                    {isDocWake && !hasDoctorActed && (
-                        <Button variant="secondary" onClick={() => { logAction('Doctor skipped'); setRoundActions(prev => ({ ...prev, doctorSave: { target: null } })); setNightStep('DOCTOR_CLOSE'); }} style={{ ...btnStyle, marginTop: '8px', width: '100%' }}>
-                            Skip Save
-                        </Button>
-                    )}
-                </div>
-            )}
+                )}
 
-            {/* PHASE CONTROL */}
-            <div style={{ marginBottom: '16px', padding: '16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)' }}>
-                <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Phase Control</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                    <Button variant={isNight ? 'primary' : 'secondary'} onClick={() => { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }} style={btnStyle}>Night</Button>
-                    <Button variant={phase === GAME_PHASES.DAY_INTRO ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DAY_INTRO)} style={btnStyle}>Day Intro</Button>
-                    <Button variant={phase === GAME_PHASES.DISCUSSION ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DISCUSSION)} style={btnStyle}>Discussion</Button>
-                    <Button variant={phase === GAME_PHASES.VOTING ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.VOTING)} style={btnStyle}>Voting</Button>
+                {/* Skip Action Buttons for Night */}
+                {isNight && (isMafiaWake && !hasMafiaActed) && (
+                    <Button variant="secondary" onClick={() => { logAction('Mafia skipped'); setRoundActions(prev => ({ ...prev, mafiaKill: { target: null, killer: 'None' } })); setNightStep('MAFIA_CLOSE'); }} style={{ ...btnStyle, marginTop: '8px', width: '100%', fontSize: '0.85rem' }}>Skip Kill</Button>
+                )}
+                {isNight && (isDetWake && !hasDetectiveActed) && (
+                    <Button variant="secondary" onClick={() => { logAction('Detective skipped'); setRoundActions(prev => ({ ...prev, detectiveCheck: { target: null } })); setNightStep('DETECTIVE_CLOSE'); }} style={{ ...btnStyle, marginTop: '8px', width: '100%', fontSize: '0.85rem' }}>Skip Check</Button>
+                )}
+                {isNight && (isDocWake && !hasDoctorActed) && (
+                    <Button variant="secondary" onClick={() => { logAction('Doctor skipped'); setRoundActions(prev => ({ ...prev, doctorSave: { target: null } })); setNightStep('DOCTOR_CLOSE'); }} style={{ ...btnStyle, marginTop: '8px', width: '100%', fontSize: '0.85rem' }}>Skip Save</Button>
+                )}
+
+                {/* Quick Phase Jumps */}
+                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginTop: '10px' }}>
+                    <Button variant={isNight ? 'primary' : 'secondary'} onClick={() => { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }} style={{ padding: '6px 12px', fontSize: '0.8rem', minHeight: '36px' }}>Night</Button>
+                    <Button variant={phase === GAME_PHASES.DAY_INTRO ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DAY_INTRO)} style={{ padding: '6px 12px', fontSize: '0.8rem', minHeight: '36px' }}>Day</Button>
+                    <Button variant={phase === GAME_PHASES.DISCUSSION ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DISCUSSION)} style={{ padding: '6px 12px', fontSize: '0.8rem', minHeight: '36px' }}>Talk</Button>
+                    <Button variant={phase === GAME_PHASES.VOTING ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.VOTING)} style={{ padding: '6px 12px', fontSize: '0.8rem', minHeight: '36px' }}>Vote</Button>
                 </div>
-                <Button variant="secondary" onClick={() => {
-                    if (phase === GAME_PHASES.DAY_INTRO) advancePhase(GAME_PHASES.DISCUSSION);
-                    else if (phase === GAME_PHASES.DISCUSSION) advancePhase(GAME_PHASES.VOTING);
-                    else if (phase === GAME_PHASES.VOTING) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
-                    else if (isNight) setNightStep('WAKE_ALL');
-                }} style={{ ...btnStyle, marginTop: '8px', width: '100%' }}>Skip to Next Phase →</Button>
             </div>
 
             {/* ACTION LOG BUTTON */}
