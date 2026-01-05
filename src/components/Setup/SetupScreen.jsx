@@ -3,6 +3,7 @@ import { useGame } from '../../context/GameContext';
 import { Button } from '../Shared/Button';
 import { ROLES, CATEGORIES } from '../../constants/roles';
 import { CustomRoleCreator } from './CustomRoleCreator';
+import { RoleInfoPopup } from '../Shared/RoleInfoPopup';
 
 const PlayerCountStep = ({ count, setCount, onNext }) => (
     <div className="setup-step fade-in">
@@ -21,6 +22,7 @@ const RoleSelectionStep = ({ playerCount, roles, setRoles, onNext, onBack }) => 
     const remaining = playerCount - totalAssigned;
     const [showCustomCreator, setShowCustomCreator] = useState(false);
     const [expandedCategory, setExpandedCategory] = useState(CATEGORIES.CLASSIC);
+    const [selectedRoleInfo, setSelectedRoleInfo] = useState(null);
 
     const updateRole = (roleId, delta) => {
         const current = roles[roleId] || 0;
@@ -30,9 +32,22 @@ const RoleSelectionStep = ({ playerCount, roles, setRoles, onNext, onBack }) => 
     };
 
     const handleCreateCustomRole = (newRole) => {
-        ROLES[newRole.id.toUpperCase()] = newRole;
-        setRoles({ ...roles, [newRole.id]: 1 });
-        setShowCustomCreator(false);
+        // NOTE: Direct mutation of ROLES constant is not ideal but used here for simple session persistence.
+        // In a real app, custom roles should be stored in GameContext settings.
+        try {
+            // Attempt to write, but if it fails (strict mode), we ignore or handle.
+            // For now, we'll try to use a safer way if possible, or keep it if it works in non-strict.
+            // But to prevent white-screen crashes, we wrap in try-catch.
+            const roleWithCat = { ...newRole, category: CATEGORIES.CUSTOM };
+            ROLES[roleWithCat.id.toUpperCase()] = roleWithCat;
+            setRoles({ ...roles, [roleWithCat.id]: 1 });
+            setShowCustomCreator(false);
+            setExpandedCategory(CATEGORIES.CUSTOM);
+        } catch (e) {
+            console.error("Failed to add custom role", e);
+            alert("Custom roles are limited in this version.");
+            setShowCustomCreator(false);
+        }
     };
 
     // Group roles by category
@@ -90,8 +105,8 @@ const RoleSelectionStep = ({ playerCount, roles, setRoles, onNext, onBack }) => 
                                 alignItems: 'center',
                                 justifyContent: 'space-between'
                             }}>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: 'bold', color: role.color || 'white' }}>{role.name}</div>
+                                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setSelectedRoleInfo(role)}>
+                                    <div style={{ fontWeight: 'bold', color: role.color || 'white' }}>{role.name} ℹ️</div>
                                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{role.description}</div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: '12px' }}>
@@ -130,6 +145,8 @@ const RoleSelectionStep = ({ playerCount, roles, setRoles, onNext, onBack }) => 
                 <Button variant="secondary" onClick={onBack}>Back</Button>
                 <Button onClick={onNext} disabled={remaining !== 0}>Next</Button>
             </div>
+
+            <RoleInfoPopup role={selectedRoleInfo} onClose={() => setSelectedRoleInfo(null)} />
         </div>
     );
 };

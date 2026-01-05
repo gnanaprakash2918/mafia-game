@@ -11,29 +11,11 @@ export const CATEGORIES = {
     CORONA: 'Corona',
     CRIMSON: 'Crimson',
     PREMIUM: 'Premium',
+    CUSTOM: 'Custom',
 };
-
-// High Priority: Blockers > Killers > Investigators > Special
-// Wake Order:
-// 0: Initial/Passive (non-waking)
-// 1: Mafia/Godfather (Kill)
-// 2: Blockers/Redirectors (Roleblocker, Distractor, Goose)
-// 3: Killers (Vigilante, Serial Killer)
-// 4: Investigators (Detective, PI, Watcher, Spy, Hacker)
-// 5: Protectors (Doctor, Bodyguard)
-// 6: Special/Misc (Framer, etc - often with Mafia)
 
 export const ROLES = {
     // --- CLASSIC ---
-    GODFATHER: {
-        id: 'godfather',
-        name: 'Godfather',
-        team: TEAMS.MAFIA,
-        category: CATEGORIES.CLASSIC,
-        description: 'Leader of the Mafia. Appear as innocent to Detective.',
-        wakeOrder: 1,
-        color: 'var(--danger)',
-    },
     MAFIA: {
         id: 'mafia',
         name: 'Mafia',
@@ -59,7 +41,7 @@ export const ROLES = {
         category: CATEGORIES.CLASSIC,
         description: 'Check a player\'s alignment.',
         wakeOrder: 4,
-        color: 'var(--success)',
+        color: 'var(--info)', // Blue
     },
     VILLAGER: {
         id: 'villager',
@@ -70,6 +52,45 @@ export const ROLES = {
         wakeOrder: 0,
         color: 'var(--success)',
     },
+
+    // --- CRIMSON ---
+    GODFATHER: {
+        id: 'godfather',
+        name: 'Godfather',
+        team: TEAMS.MAFIA,
+        category: CATEGORIES.CRIMSON,
+        description: 'Leader of the Mafia. Appear as innocent to Detective.',
+        wakeOrder: 1,
+        color: 'var(--danger)',
+    },
+    LINK: {
+        id: 'link',
+        name: 'Link',
+        team: TEAMS.VILLAGE,
+        category: CATEGORIES.CRIMSON,
+        description: 'Link two players so they know each other.',
+        wakeOrder: 4,
+        color: 'var(--success)',
+    },
+    MIMIC: {
+        id: 'mimic',
+        name: 'Mimic',
+        team: TEAMS.MAFIA,
+        category: CATEGORIES.CRIMSON,
+        description: 'Copy a role or disguise as one.',
+        wakeOrder: 2,
+        color: 'var(--danger)',
+    },
+    ALCHEMIST: { // Variable team, simplified here
+        id: 'alchemist',
+        name: 'Alchemist',
+        team: TEAMS.NEUTRAL,
+        category: CATEGORIES.CRIMSON,
+        description: 'Brew potions with random effects.',
+        wakeOrder: 3,
+        color: 'var(--accent)',
+    },
+
 
     // --- CRAZY ---
     VIGILANTE: {
@@ -126,7 +147,7 @@ export const ROLES = {
         category: CATEGORIES.CHAOS,
         description: 'Check two players to see if they are on the same team.',
         wakeOrder: 4,
-        color: 'var(--success)',
+        color: 'var(--info)',
     },
     SPY: {
         id: 'spy',
@@ -135,7 +156,7 @@ export const ROLES = {
         category: CATEGORIES.CHAOS,
         description: 'See who a player visits.',
         wakeOrder: 4,
-        color: 'var(--success)',
+        color: 'var(--info)',
     },
     DISTRACTOR: {
         id: 'distractor',
@@ -173,7 +194,7 @@ export const ROLES = {
         category: CATEGORIES.CORONA,
         description: 'See who visits your target.',
         wakeOrder: 4,
-        color: 'var(--success)',
+        color: 'var(--info)',
     },
     PLAGUE_DOCTOR: {
         id: 'plague_doctor',
@@ -210,35 +231,6 @@ export const ROLES = {
         description: 'Redirect a player\'s action to a random target.',
         wakeOrder: 2,
         color: 'var(--danger)',
-    },
-
-    // --- CRIMSON ---
-    LINK: {
-        id: 'link',
-        name: 'Link',
-        team: TEAMS.VILLAGE,
-        category: CATEGORIES.CRIMSON,
-        description: 'Link two players so they know each other.',
-        wakeOrder: 4,
-        color: 'var(--success)',
-    },
-    MIMIC: {
-        id: 'mimic',
-        name: 'Mimic',
-        team: TEAMS.MAFIA,
-        category: CATEGORIES.CRIMSON,
-        description: 'Copy a role or disguise as one.',
-        wakeOrder: 2,
-        color: 'var(--danger)',
-    },
-    ALCHEMIST: { // Variable team, simplified here
-        id: 'alchemist',
-        name: 'Alchemist',
-        team: TEAMS.NEUTRAL,
-        category: CATEGORIES.CRIMSON,
-        description: 'Brew potions with random effects.',
-        wakeOrder: 3,
-        color: 'var(--accent)',
     },
 
     // --- PREMIUM ---

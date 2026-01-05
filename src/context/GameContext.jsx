@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useCallback } from 'react';
-import { GAME_PHASES } from '../constants/roles';
+import { GAME_PHASES, ROLES } from '../constants/roles';
 
 const GameContext = createContext();
 
@@ -17,10 +17,14 @@ const initialState = {
             unlimited: false,
             autoStartNight: false, // User requested toggle
         },
+        allowNoKill: true,
+        allowSelfHeal: true,
     },
     winner: null, // { team: 'MAFIA'|'VILLAGE'|'NEUTRAL', message: '...' }
     currentTurnIndex: 0, // For role reveal or active night turn
-    round: 1,
+    day: 1, // Day counter (replaces round)
+    nightStep: 'IDLE', // IDLE | SLEEP | MAFIA_WAKE | MAFIA_CLOSE | DETECTIVE_WAKE | DETECTIVE_CLOSE | DOCTOR_WAKE | DOCTOR_CLOSE | WAKE_ALL
+    logs: [], // Array of { message, time }
 };
 
 const gameReducer = (state, action) => {
@@ -60,6 +64,44 @@ const gameReducer = (state, action) => {
             };
         case 'DECLARE_WIN':
             return { ...state, winner: action.payload, phase: GAME_PHASES.GAME_OVER };
+        case 'LOG_ACTION':
+            return { ...state, logs: [action.payload, ...state.logs] };
+        case 'SET_NIGHT_STEP':
+            return { ...state, nightStep: action.payload };
+        case 'INCREMENT_DAY':
+            return { ...state, day: state.day + 1 };
+        case 'RESTART_SAME_SETTINGS': {
+
+            // Re-shuffle roles for same players
+            const { players, settings } = state;
+            let rolePool = [];
+            Object.entries(settings.roles).forEach(([key, count]) => {
+                for (let i = 0; i < count; i++) rolePool.push(key);
+            });
+            rolePool.sort(() => Math.random() - 0.5);
+
+            const newPlayers = players.map((p, i) => {
+                const roleId = rolePool[i];
+                // Fallback to finding role in ROLES (Standard) or Custom (if stored in state, but ROLES is constant module...)
+                // Issue: Custom roles added to ROLES export in SetupScreen might be lost if module reloaded? 
+                // No, module state persists in session.
+                const roleDef = ROLES[Object.keys(ROLES).find(k => ROLES[k].id === roleId)];
+                return {
+                    id: `p-${i}-${Date.now()}`,
+                    name: p.name,
+                    role: roleDef || p.role, // Fallback to keep same role if not found (shouldn't happen)
+                    isAlive: true,
+                    status: {}
+                };
+            });
+
+            return {
+                ...initialState,
+                players: newPlayers,
+                settings: settings, // Keep settings
+                phase: GAME_PHASES.ROLE_REVEAL,
+            };
+        }
         case 'RESET_GAME':
             return initialState;
         default:
@@ -122,6 +164,11 @@ export const GameProvider = ({ children }) => {
         dispatch({ type: 'DECLARE_WIN', payload: { team, message } });
     }, []);
 
+    const logAction = useCallback((message) => {
+        const time = new Date().toLocaleTimeString();
+        dispatch({ type: 'LOG_ACTION', payload: { message, time } });
+    }, []);
+
     const value = {
         state,
         updateSettings,
@@ -131,6 +178,7 @@ export const GameProvider = ({ children }) => {
         killPlayer,
         declareWin,
         checkWinCondition, // Exported for components to use
+        logAction,
         dispatch,
     };
 

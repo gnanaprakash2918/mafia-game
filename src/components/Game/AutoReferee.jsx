@@ -7,14 +7,13 @@ import { GAME_PHASES } from '../../constants/roles';
 import { WinDeclaration } from './WinDeclaration';
 
 export const AutoReferee = () => {
-    const { state, nextPhase, killPlayer, checkWinCondition, declareWin } = useGame();
-    const { players, settings, round } = state;
+    const { state, dispatch, nextPhase, killPlayer, checkWinCondition, declareWin } = useGame();
+    const { players, settings, day } = state;
     const { speak, cancel } = useTTS();
 
     // Local state
     const [currentNightRoleIndex, setCurrentNightRoleIndex] = useState(-1);
     const [nightAction, setNightAction] = useState('SLEEP'); // SLEEP, WAKE, ACTION, CLOSE
-    const [votingSkipped, setVotingSkipped] = useState(false);
 
     // Filter and Sort Night Wake Order
     const wakingPlayers = players.filter(p => p.role.wakeOrder > 0 && p.isAlive);
@@ -51,7 +50,7 @@ export const AutoReferee = () => {
 
     const handleTimerComplete = () => {
         if (state.phase === GAME_PHASES.DAY_INTRO) {
-            nextPhase(GAME_PHASES.DISCUSSION); // Auto moves to discussion
+            nextPhase(GAME_PHASES.DISCUSSION);
         } else if (state.phase === GAME_PHASES.DISCUSSION) {
             nextPhase(GAME_PHASES.VOTING);
         }
@@ -69,7 +68,6 @@ export const AutoReferee = () => {
     // --- NIGHT LOGIC ---
     useEffect(() => {
         if (state.phase === GAME_PHASES.NIGHT_INTRO) {
-            // Wait for manual start if configured, else auto-start
             if (settings.timers.autoStartNight) {
                 beginNight();
             }
@@ -89,6 +87,7 @@ export const AutoReferee = () => {
             if (currentNightRoleIndex >= uniqueWakingSequences.length) {
                 // Night Over
                 speak("Everyone wake up. It is now morning.", () => {
+                    dispatch({ type: 'INCREMENT_DAY' });
                     nextPhase(GAME_PHASES.DAY_INTRO);
                 });
                 return;
@@ -130,7 +129,6 @@ export const AutoReferee = () => {
     };
 
     const handleSkipVote = () => {
-        setVotingSkipped(true);
         nextPhase(GAME_PHASES.NIGHT_INTRO);
     };
 
@@ -140,8 +138,9 @@ export const AutoReferee = () => {
     // 1. NIGHT INTRO (Manual Start Check)
     if (state.phase === GAME_PHASES.NIGHT_INTRO) {
         return (
-            <div className="fade-in" style={{ textAlign: 'center', marginTop: '40px' }}>
-                <h2 style={{ fontSize: '3rem', marginBottom: '24px' }}>Night Approaching</h2>
+            <div className="fade-in" style={{ textAlign: 'center', marginTop: '40px', padding: '24px' }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Day {day}</div>
+                <h2 style={{ fontSize: '2.5rem', marginBottom: '24px', color: '#818cf8' }}>Night Approaching</h2>
                 <p style={{ marginBottom: '32px', color: 'var(--text-muted)' }}>Get ready to sleep.</p>
                 {!settings.timers.autoStartNight && (
                     <Button onClick={beginNight}>Start Night Sequence</Button>
@@ -154,12 +153,13 @@ export const AutoReferee = () => {
     if (state.phase === GAME_PHASES.NIGHT_ACTIVE) {
         const currentRole = uniqueWakingSequences[currentNightRoleIndex];
         return (
-            <div className="fade-in" style={{ textAlign: 'center', marginTop: '40px', background: '#050510', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                <h2 style={{ fontSize: '3rem', marginBottom: '24px', color: '#818cf8' }}>Night Phase</h2>
-                <div style={{ fontSize: '1.5rem', marginBottom: '40px', color: 'var(--text-muted)' }}>
+            <div className="fade-in" style={{ textAlign: 'center', marginTop: '40px', background: '#050510', minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Day {day} - Night</div>
+                <h2 style={{ fontSize: '2.5rem', marginBottom: '24px', color: '#818cf8' }}>Night Phase</h2>
+                <div style={{ fontSize: '1.3rem', marginBottom: '40px', color: 'var(--text-muted)' }}>
                     {nightAction === 'ACTION' ? `${currentRole?.name} is acting...` : "Transitioning..."}
                 </div>
-                <div style={{ fontSize: '5rem', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '40px', color: '#818cf8' }}>
+                <div style={{ fontSize: '4rem', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '40px', color: '#818cf8' }}>
                     {formattedTime}
                 </div>
                 <Button onClick={handleNextNightStep} disabled={nightAction !== 'ACTION'}>
@@ -173,19 +173,22 @@ export const AutoReferee = () => {
     if (state.phase === GAME_PHASES.DAY_INTRO || state.phase === GAME_PHASES.DISCUSSION) {
         const isIntro = state.phase === GAME_PHASES.DAY_INTRO;
         return (
-            <div className="fade-in" style={{ textAlign: 'center', marginTop: '40px' }}>
-                <h2 style={{ fontSize: '3rem', marginBottom: '24px', color: 'var(--warning)' }}>Day {isIntro ? 'Intro' : 'Discussion'}</h2>
-                <div style={{ fontSize: '6rem', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '40px', color: timeLeft < 10 && !settings.timers.unlimited ? 'var(--danger)' : 'white' }}>
+            <div className="fade-in" style={{ textAlign: 'center', marginTop: '40px', padding: '24px' }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Day {day}</div>
+                <h2 style={{ fontSize: '2.5rem', marginBottom: '24px', color: 'var(--warning)' }}>
+                    {isIntro ? 'Day Intro' : 'Discussion Time'}
+                </h2>
+                <div style={{ fontSize: '5rem', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '40px', color: timeLeft < 10 && !settings.timers.unlimited ? 'var(--danger)' : 'white' }}>
                     {formattedTime}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '300px', margin: '0 auto' }}>
                     {isIntro ? (
                         <Button onClick={() => nextPhase(GAME_PHASES.DISCUSSION)}>Start Discussion</Button>
                     ) : (
                         <Button onClick={() => nextPhase(GAME_PHASES.VOTING)}>Start Voting</Button>
                     )}
                 </div>
-                <h3 style={{ marginTop: '32px', color: 'var(--text-muted)' }}>Alive Players: {players.filter(p => p.isAlive).length}</h3>
+                <h3 style={{ marginTop: '32px', color: 'var(--text-muted)' }}>Alive: {players.filter(p => p.isAlive).length}</h3>
             </div>
         );
     }
@@ -193,10 +196,11 @@ export const AutoReferee = () => {
     // 4. VOTING
     if (state.phase === GAME_PHASES.VOTING) {
         return (
-            <div className="fade-in" style={{ paddingBottom: '40px' }}>
+            <div className="fade-in" style={{ paddingBottom: '40px', padding: '24px' }}>
                 <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                    <h2 style={{ fontSize: '3rem', color: 'var(--danger)' }}>Voting Time</h2>
-                    <div style={{ fontSize: '4rem', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '16px' }}>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Day {day}</div>
+                    <h2 style={{ fontSize: '2.5rem', color: 'var(--danger)' }}>Voting Time</h2>
+                    <div style={{ fontSize: '3rem', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '16px' }}>
                         {formattedTime}
                     </div>
                 </div>
@@ -208,26 +212,31 @@ export const AutoReferee = () => {
                             padding: '16px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)',
                             borderLeft: '4px solid var(--text-muted)'
                         }}>
-                            <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{player.name}</span>
+                            <span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{player.name}</span>
                             <Button
                                 variant="danger"
-                                style={{ width: 'auto', padding: '8px 16px' }}
+                                style={{ width: 'auto', padding: '10px 18px' }}
                                 onClick={() => {
-                                    if (confirm(`Are you sure you want to eliminate ${player.name}?`)) handleKick(player);
+                                    if (confirm(`Kick ${player.name}?`)) handleKick(player);
                                 }}
                             >
-                                Kick / Eliminate
+                                Kick
                             </Button>
                         </div>
                     ))}
                 </div>
 
                 <div style={{ padding: '0 24px' }}>
-                    <Button variant="secondary" onClick={handleSkipVote}>Skip Voting (No One Dies)</Button>
+                    <Button variant="secondary" onClick={handleSkipVote}>Skip (No One Kicked)</Button>
                 </div>
             </div>
         );
     }
 
-    return <div>Loading Phase... {state.phase}</div>;
+    // Game Over
+    if (state.phase === GAME_PHASES.GAME_OVER) {
+        return <WinDeclaration />;
+    }
+
+    return <div style={{ padding: '24px' }}>Loading Phase... {state.phase}</div>;
 };
