@@ -31,7 +31,7 @@ export const RoleReveal = () => {
         if (currentTurnIndex < players.length - 1) {
             dispatch({ type: 'INCREMENT_TURN' });
         } else {
-            nextPhase(GAME_PHASES.NIGHT_INTRO);
+            nextPhase(GAME_PHASES.REFEREE_CONFIRMATION);
         }
     };
 

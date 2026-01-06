@@ -2,6 +2,7 @@ import React from 'react';
 import { useGame } from './context/GameContext';
 import { SetupScreen } from './components/Setup/SetupScreen';
 import { RoleReveal } from './components/Game/RoleReveal';
+import { RefereeConfirmation } from './components/Game/RefereeConfirmation';
 import { AutoReferee } from './components/Game/AutoReferee';
 import { WelcomeScreen } from './components/Setup/WelcomeScreen';
 import { WinDeclaration } from './components/Game/WinDeclaration';
@@ -18,6 +19,8 @@ function App() {
                 return <SetupScreen />;
             case GAME_PHASES.ROLE_REVEAL:
                 return <RoleReveal />;
+            case GAME_PHASES.REFEREE_CONFIRMATION:
+                return <RefereeConfirmation />;
             case GAME_PHASES.GAME_OVER:
                 return <WinDeclaration />;
             case GAME_PHASES.NIGHT_INTRO:
