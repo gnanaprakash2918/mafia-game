@@ -180,8 +180,12 @@ const TimerEntry = ({ label, value, onChange }) => (
 // Default night steps
 const DEFAULT_NIGHT_STEPS = [
     { id: 'SLEEP', label: 'Everyone Sleep', duration: 5 },
+    { id: 'DECOY_WAKE', label: 'Decoy Wake', duration: 8 },
+    { id: 'DECOY_CLOSE', label: 'Decoy Close', duration: 3 },
     { id: 'MAFIA_WAKE', label: 'Mafia Wake', duration: 8 },
     { id: 'MAFIA_CLOSE', label: 'Mafia Close', duration: 3 },
+    { id: 'GUARDIAN_ANGEL_WAKE', label: 'Guardian Angel Wake', duration: 8 },
+    { id: 'GUARDIAN_ANGEL_CLOSE', label: 'Guardian Angel Close', duration: 3 },
     { id: 'DETECTIVE_WAKE', label: 'Detective Wake', duration: 8 },
     { id: 'DETECTIVE_CLOSE', label: 'Detective Close', duration: 3 },
     { id: 'DOCTOR_WAKE', label: 'Doctor Wake', duration: 8 },

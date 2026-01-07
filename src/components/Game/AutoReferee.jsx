@@ -9,8 +9,12 @@ import { RoleInfoPopup } from '../Shared/RoleInfoPopup';
 // Night sequence steps with default durations
 const DEFAULT_NIGHT_STEPS = [
     { id: 'SLEEP', label: 'Everyone Sleep', duration: 5 },
+    { id: 'DECOY_WAKE', label: 'Decoy Wake', duration: 8 },
+    { id: 'DECOY_CLOSE', label: 'Decoy Close', duration: 3 },
     { id: 'MAFIA_WAKE', label: 'Mafia Wake', duration: 8 },
     { id: 'MAFIA_CLOSE', label: 'Mafia Close', duration: 3 },
+    { id: 'GUARDIAN_ANGEL_WAKE', label: 'Guardian Angel Wake', duration: 8 },
+    { id: 'GUARDIAN_ANGEL_CLOSE', label: 'Guardian Angel Close', duration: 3 },
     { id: 'DETECTIVE_WAKE', label: 'Detective Wake', duration: 8 },
     { id: 'DETECTIVE_CLOSE', label: 'Detective Close', duration: 3 },
     { id: 'DOCTOR_WAKE', label: 'Doctor Wake', duration: 8 },
@@ -41,7 +45,18 @@ export const AutoReferee = () => {
         mafiaKill: null,
         detectiveCheck: null,
         doctorSave: null,
+        decoyApply: null,
+        guardianAngelSave: null,
     });
+
+    // One-shot powers (persist across rounds until used)
+    const [usedOneShotPowers, setUsedOneShotPowers] = useState({
+        decoy: false,
+        guardianAngel: false,
+    });
+
+    // Decoy result popup (referee only)
+    const [decoyResultPopup, setDecoyResultPopup] = useState(null);
 
     // Pending death (will be resolved at dawn unless saved)
     const [pendingDeath, setPendingDeath] = useState(null);
@@ -50,6 +65,8 @@ export const AutoReferee = () => {
     const aliveMafia = useMemo(() => players.filter(p => p.isAlive && p.role.team === 'MAFIA'), [players]);
     const aliveDetectives = useMemo(() => players.filter(p => p.isAlive && (p.role.id === 'detective' || p.role.id === 'pi')), [players]);
     const aliveDoctors = useMemo(() => players.filter(p => p.isAlive && p.role.id === 'doctor'), [players]);
+    const aliveDecoys = useMemo(() => players.filter(p => p.isAlive && p.role.id === 'decoy'), [players]);
+    const aliveGuardianAngels = useMemo(() => players.filter(p => p.isAlive && p.role.id === 'guardian_angel'), [players]);
     const alivePlayers = useMemo(() => players.filter(p => p.isAlive), [players]);
 
     // Timer - get duration based on current phase or step
@@ -79,28 +96,65 @@ export const AutoReferee = () => {
         startTimer();
 
         if (stepId === 'WAKE_ALL') {
-            // Resolve pending death
-            if (pendingDeath && roundActions.doctorSave?.target !== pendingDeath.id) {
-                dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: pendingDeath.id, updates: { isAlive: false, deathDay: day } } });
-                logAction(`💀 ${pendingDeath.name} was killed by ${roundActions.mafiaKill?.killer || 'Mafia'}`);
-            } else if (pendingDeath && roundActions.doctorSave?.target === pendingDeath.id) {
-                logAction(`💉 ${pendingDeath.name} was saved by Doctor!`);
-            } else if (!pendingDeath) {
+            let finalDeath = pendingDeath;
+            let decoyKilledMafia = null;
+
+            // Guardian Angel sacrifices themselves if they used power
+            if (roundActions.guardianAngelSave?.used) {
+                const angel = aliveGuardianAngels[0];
+                if (angel) {
+                    dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: angel.id, updates: { isAlive: false, deathDay: day } } });
+                    if (pendingDeath) {
+                        logAction(`👼 ${angel.name} (Guardian Angel) sacrificed themselves to save ${pendingDeath.name}!`);
+                        finalDeath = null; // Saved!
+                    } else {
+                        logAction(`👼 ${angel.name} (Guardian Angel) sacrificed themselves... but no one was targeted!`);
+                    }
+                }
+            }
+
+            // Decoy check: if target has decoy, RANDOM mafia dies instead
+            if (finalDeath && roundActions.decoyApply?.target === finalDeath.id) {
+                // Randomly select one mafia member to die
+                const currentAliveMafia = players.filter(p => p.isAlive && p.role.team === 'MAFIA');
+                if (currentAliveMafia.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * currentAliveMafia.length);
+                    decoyKilledMafia = currentAliveMafia[randomIndex];
+                    dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: decoyKilledMafia.id, updates: { isAlive: false, deathDay: day } } });
+                    logAction(`🎭 Decoy activated! A mafia member died trying to kill ${finalDeath.name}!`);
+                    setDecoyResultPopup({ victim: decoyKilledMafia.name }); // Show referee popup
+                    finalDeath = null; // Target survives
+                }
+            }
+
+            // Doctor save check
+            if (finalDeath && roundActions.doctorSave?.target === finalDeath.id) {
+                logAction(`💉 ${finalDeath.name} was saved by Doctor!`);
+                finalDeath = null;
+            }
+
+            // Final death resolution
+            if (finalDeath) {
+                dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: finalDeath.id, updates: { isAlive: false, deathDay: day } } });
+                logAction(`💀 ${finalDeath.name} was killed by ${roundActions.mafiaKill?.killer || 'Mafia'}`);
+            } else if (!pendingDeath && !roundActions.guardianAngelSave?.used && !decoyKilledMafia) {
                 logAction(`☀ No one died tonight`);
             }
 
-            // Check win condition
-            const updatedPlayers = players.map(p =>
-                pendingDeath && p.id === pendingDeath.id && roundActions.doctorSave?.target !== pendingDeath.id
-                    ? { ...p, isAlive: false } : p
-            );
+            // Check win condition with updated player states
+            const updatedPlayers = players.map(p => {
+                if (finalDeath && p.id === finalDeath.id) return { ...p, isAlive: false };
+                if (decoyKilledMafia && p.id === decoyKilledMafia.id) return { ...p, isAlive: false };
+                if (roundActions.guardianAngelSave?.used && aliveGuardianAngels[0] && p.id === aliveGuardianAngels[0].id) return { ...p, isAlive: false };
+                return p;
+            });
             const mafiaAlive = updatedPlayers.filter(p => p.isAlive && p.role.team === 'MAFIA').length;
             const villageAlive = updatedPlayers.filter(p => p.isAlive && p.role.team === 'VILLAGE').length;
             logAction(`📊 Mafia: ${mafiaAlive} | Village: ${villageAlive}`);
 
-            // Clear round actions
+            // Clear round actions (NOT usedOneShotPowers - those persist)
             setPendingDeath(null);
-            setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null });
+            setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null, decoyApply: null, guardianAngelSave: null });
 
             // Move to day
             setTimeout(() => {
@@ -119,6 +173,8 @@ export const AutoReferee = () => {
     const hasMafiaActed = roundActions.mafiaKill !== null;
     const hasDetectiveActed = roundActions.detectiveCheck !== null;
     const hasDoctorActed = roundActions.doctorSave !== null;
+    const hasDecoyActed = roundActions.decoyApply !== null;
+    const hasGuardianAngelActed = roundActions.guardianAngelSave !== null;
 
     const openActionModal = (player, type) => {
         setSelectedPlayer(player);
@@ -151,6 +207,11 @@ export const AutoReferee = () => {
             logAction(`💉 ${doctor} saved ${selectedPlayer.name}`);
             setRoundActions(prev => ({ ...prev, doctorSave: { target: selectedPlayer.id, doctor } }));
             setNightStep('DOCTOR_CLOSE');
+        } else if (actionType === 'DECOY') {
+            logAction(`🎭 Decoy applied to ${selectedPlayer.name}`);
+            setRoundActions(prev => ({ ...prev, decoyApply: { target: selectedPlayer.id } }));
+            setUsedOneShotPowers(prev => ({ ...prev, decoy: true }));
+            setNightStep('DECOY_CLOSE');
         }
 
         setShowActionModal(false);
@@ -180,6 +241,8 @@ export const AutoReferee = () => {
     const isMafiaWake = nightStep === 'MAFIA_WAKE';
     const isDetWake = nightStep === 'DETECTIVE_WAKE';
     const isDocWake = nightStep === 'DOCTOR_WAKE';
+    const isDecoyWake = nightStep === 'DECOY_WAKE';
+    const isGuardianAngelWake = nightStep === 'GUARDIAN_ANGEL_WAKE';
     const displayPhase = isNight ? (NIGHT_STEPS[getCurrentStepIndex()]?.label || nightStep.replace(/_/g, ' ')) : phase?.replace(/_/g, ' ') || '';
 
     const btnStyle = { minHeight: '48px', fontSize: '0.95rem', padding: '12px 16px' };
@@ -241,7 +304,7 @@ export const AutoReferee = () => {
                             <Button variant="secondary" onClick={() => {
                                 if (phase === GAME_PHASES.DAY_INTRO) advancePhase(GAME_PHASES.DISCUSSION);
                                 else if (phase === GAME_PHASES.DISCUSSION) advancePhase(GAME_PHASES.VOTING);
-                                else if (phase === GAME_PHASES.VOTING) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
+                                else if (phase === GAME_PHASES.VOTING) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null, decoyApply: null, guardianAngelSave: null }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
                                 else if (isNight) setNightStep('WAKE_ALL');
                             }} style={{ padding: '12px 18px', fontSize: '1.3rem', minHeight: '50px' }}>⏭</Button>
                         </div>
@@ -267,8 +330,14 @@ export const AutoReferee = () => {
                         )}
 
                         {/* SKIP BUTTONS FOR NIGHT ACTIONS */}
+                        {isNight && isDecoyWake && !hasDecoyActed && (
+                            <Button variant="secondary" onClick={() => { logAction('Decoy skipped (or already used)'); setRoundActions(prev => ({ ...prev, decoyApply: { target: null } })); setNightStep('DECOY_CLOSE'); }} style={{ marginBottom: '8px', width: '100%', maxWidth: '200px' }}>Skip Decoy</Button>
+                        )}
                         {isNight && isMafiaWake && !hasMafiaActed && (
                             <Button variant="secondary" onClick={() => { logAction('Mafia skipped'); setRoundActions(prev => ({ ...prev, mafiaKill: { target: null, killer: 'None' } })); setNightStep('MAFIA_CLOSE'); }} style={{ marginBottom: '8px', width: '100%', maxWidth: '200px' }}>Skip Kill</Button>
+                        )}
+                        {isNight && isGuardianAngelWake && !hasGuardianAngelActed && (
+                            <Button variant="secondary" onClick={() => { logAction('Guardian Angel skipped (or already used)'); setRoundActions(prev => ({ ...prev, guardianAngelSave: { used: false } })); setNightStep('GUARDIAN_ANGEL_CLOSE'); }} style={{ marginBottom: '8px', width: '100%', maxWidth: '200px' }}>Skip Guardian Angel</Button>
                         )}
                         {isNight && isDetWake && !hasDetectiveActed && (
                             <Button variant="secondary" onClick={() => { logAction('Detective skipped'); setRoundActions(prev => ({ ...prev, detectiveCheck: { target: null } })); setNightStep('DETECTIVE_CLOSE'); }} style={{ marginBottom: '8px', width: '100%', maxWidth: '200px' }}>Skip Check</Button>
@@ -327,8 +396,19 @@ export const AutoReferee = () => {
                                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                                             {player.isAlive ? (
                                                 <>
+                                                    {isDecoyWake && !hasDecoyActed && !usedOneShotPowers.decoy && (
+                                                        <Button variant="secondary" onClick={() => openActionModal(player, 'DECOY')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Apply Decoy</Button>
+                                                    )}
                                                     {isMafiaWake && !hasMafiaActed && canMafiaTarget && (
                                                         <Button variant="danger" onClick={() => openActionModal(player, 'KILL')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Kill</Button>
+                                                    )}
+                                                    {isGuardianAngelWake && !hasGuardianAngelActed && !usedOneShotPowers.guardianAngel && pendingDeath && (
+                                                        <Button variant="secondary" onClick={() => {
+                                                            logAction(`👼 Guardian Angel chose to sacrifice themselves!`);
+                                                            setRoundActions(prev => ({ ...prev, guardianAngelSave: { used: true } }));
+                                                            setUsedOneShotPowers(prev => ({ ...prev, guardianAngel: true }));
+                                                            setNightStep('GUARDIAN_ANGEL_CLOSE');
+                                                        }} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Sacrifice to Save</Button>
                                                     )}
                                                     {isDetWake && !hasDetectiveActed && (
                                                         <Button variant="secondary" onClick={() => openActionModal(player, 'CHECK')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Check</Button>
@@ -366,6 +446,7 @@ export const AutoReferee = () => {
                             {actionType === 'KICK' && `Kick ${selectedPlayer?.name}?`}
                             {actionType === 'CHECK' && `Check ${selectedPlayer?.name}`}
                             {actionType === 'SAVE' && `Save ${selectedPlayer?.name}`}
+                            {actionType === 'DECOY' && `Apply Decoy to ${selectedPlayer?.name}?`}
                         </h3>
 
                         {actionType === 'KILL' && aliveMafia.length > 0 && (
@@ -431,6 +512,23 @@ export const AutoReferee = () => {
             )}
 
             <RoleInfoPopup role={viewingRole} onClose={() => setViewingRole(null)} />
+
+            {/* DECOY RESULT POPUP (Referee Only) */}
+            {decoyResultPopup && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '32px', borderRadius: 'var(--radius-md)', textAlign: 'center', maxWidth: '340px' }}>
+                        <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🎭</div>
+                        <h3 style={{ color: 'var(--danger)', marginBottom: '16px' }}>Decoy Activated!</h3>
+                        <p style={{ fontSize: '1.2rem', marginBottom: '16px' }}>
+                            <strong>{decoyResultPopup.victim}</strong> (Mafia) was killed!
+                        </p>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '24px' }}>
+                            (Only you, the referee, can see this)
+                        </p>
+                        <Button variant="primary" onClick={() => setDecoyResultPopup(null)} style={{ padding: '12px 32px' }}>Got it</Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

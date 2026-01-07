@@ -52,6 +52,24 @@ export const ROLES = {
         wakeOrder: 0,
         color: 'var(--success)',
     },
+    DECOY: {
+        id: 'decoy',
+        name: 'Decoy',
+        team: TEAMS.VILLAGE,
+        category: CATEGORIES.CLASSIC,
+        description: 'Apply decoy to anyone (one-time). If mafia kills them, a random mafia dies instead.',
+        wakeOrder: 0.5, // Before Mafia
+        color: 'var(--success)',
+    },
+    GUARDIAN_ANGEL: {
+        id: 'guardian_angel',
+        name: 'Guardian Angel',
+        team: TEAMS.VILLAGE,
+        category: CATEGORIES.CLASSIC,
+        description: 'Sacrifice yourself to save mafia\'s target (one-time). You die either way.',
+        wakeOrder: 1.5, // After Mafia, before Detective
+        color: 'var(--info)',
+    },
 
     // --- CRIMSON ---
     GODFATHER: {
