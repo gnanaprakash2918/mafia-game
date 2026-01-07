@@ -1,0 +1,58 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - test
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - run: npm ci
+      
+      # Build with the appropriate base path
+      - name: Build for main
+        if: github.ref == 'refs/heads/main'
+        run: npm run build
+        env:
+          VITE_BASE: /mafia-game/
+      
+      - name: Build for test
+        if: github.ref == 'refs/heads/test'
+        run: npm run build
+        env:
+          VITE_BASE: /mafia-game/test/
+      
+      # Deploy main to root, test to /test subfolder
+      - name: Deploy main to gh-pages
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: ./
+          keep_files: true
+      
+      - name: Deploy test to gh-pages/test
+        if: github.ref == 'refs/heads/test'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: ./test
+          keep_files: true
