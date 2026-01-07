@@ -297,37 +297,126 @@ const TimerConfigStep = ({ timers, setTimers, nightSteps, setNightSteps, onNext,
         </div>
     );
 };
-const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack }) => (
-    <div className="setup-step fade-in">
-        <h2 style={{ fontSize: '1.5rem', marginBottom: '24px' }}>Enter Names</h2>
-        <div style={{ height: '50vh', overflowY: 'auto', paddingRight: '12px', marginBottom: '24px' }}>
-            {Array.from({ length: playerCount }).map((_, i) => (
-                <div key={i} style={{ marginBottom: '12px' }}>
-                    <input
-                        type="text"
-                        placeholder={`Player ${i + 1}`}
-                        value={names[i] || ''}
-                        onChange={(e) => {
-                            const newNames = [...names];
-                            newNames[i] = e.target.value;
-                            setNames(newNames);
-                        }}
-                        style={{
-                            width: '100%', padding: '16px', background: 'var(--bg-tertiary)',
-                            border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-md)',
-                            color: 'white', outline: 'none', fontSize: '1rem'
-                        }}
-                    />
-                </div>
-            ))}
-        </div>
+const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack }) => {
+    const [showLoadModal, setShowLoadModal] = useState(false);
+    const STORAGE_KEY = 'mafia_name_templates';
 
-        <div style={{ display: 'flex', gap: '12px' }}>
-            <Button variant="secondary" onClick={onBack}>Back</Button>
-            <Button onClick={onNext} disabled={names.filter(n => n?.trim()).length !== playerCount}>Start Game</Button>
+    // Get saved templates from localStorage
+    const getSavedTemplates = () => {
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        } catch {
+            return [];
+        }
+    };
+
+    // Save current names as a template
+    const handleSave = () => {
+        const templateName = prompt('Enter template name:');
+        if (!templateName?.trim()) return;
+
+        const templates = getSavedTemplates();
+        const existingIdx = templates.findIndex(t => t.name === templateName.trim());
+        const newTemplate = { name: templateName.trim(), players: names.filter(n => n?.trim()) };
+
+        if (existingIdx >= 0) {
+            templates[existingIdx] = newTemplate;
+        } else {
+            templates.push(newTemplate);
+        }
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+        alert(`Saved "${templateName}" (${newTemplate.players.length} players)`);
+    };
+
+    // Load a template
+    const handleLoad = (template) => {
+        const newNames = [...names];
+        template.players.forEach((name, i) => {
+            if (i < playerCount) newNames[i] = name;
+        });
+        setNames(newNames);
+        setShowLoadModal(false);
+    };
+
+    // Delete a template
+    const handleDelete = (templateName) => {
+        if (!confirm(`Delete "${templateName}"?`)) return;
+        const templates = getSavedTemplates().filter(t => t.name !== templateName);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+        setShowLoadModal(false);
+        setTimeout(() => setShowLoadModal(true), 100); // Refresh
+    };
+
+    const templates = getSavedTemplates();
+
+    return (
+        <div className="setup-step fade-in">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2 style={{ fontSize: '1.5rem', margin: 0 }}>Enter Names</h2>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <Button variant="secondary" onClick={() => setShowLoadModal(true)} style={{ padding: '8px 12px', fontSize: '0.85rem' }}>📂 Load</Button>
+                    <Button variant="secondary" onClick={handleSave} style={{ padding: '8px 12px', fontSize: '0.85rem' }}>💾 Save</Button>
+                </div>
+            </div>
+
+            <div style={{ height: '50vh', overflowY: 'auto', paddingRight: '12px', marginBottom: '24px' }}>
+                {Array.from({ length: playerCount }).map((_, i) => (
+                    <div key={i} style={{ marginBottom: '12px' }}>
+                        <input
+                            type="text"
+                            placeholder={`Player ${i + 1}`}
+                            value={names[i] || ''}
+                            onChange={(e) => {
+                                const newNames = [...names];
+                                newNames[i] = e.target.value;
+                                setNames(newNames);
+                            }}
+                            style={{
+                                width: '100%', padding: '16px', background: 'var(--bg-tertiary)',
+                                border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-md)',
+                                color: 'white', outline: 'none', fontSize: '1rem'
+                            }}
+                        />
+                    </div>
+                ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+                <Button variant="secondary" onClick={onBack}>Back</Button>
+                <Button onClick={onNext} disabled={names.filter(n => n?.trim()).length !== playerCount}>Start Game</Button>
+            </div>
+
+            {/* Load Template Modal */}
+            {showLoadModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.9)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '24px', borderRadius: 'var(--radius-md)', width: '100%', maxWidth: '340px', maxHeight: '80vh', overflow: 'auto' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                            <h3>Load Template</h3>
+                            <Button variant="secondary" onClick={() => setShowLoadModal(false)} style={{ padding: '8px 12px' }}>✕</Button>
+                        </div>
+                        {templates.length === 0 ? (
+                            <p style={{ color: 'var(--text-muted)' }}>No saved templates. Save names first!</p>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                {templates.map((t, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-sm)' }}>
+                                        <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => handleLoad(t)}>
+                                            <div style={{ fontWeight: 'bold' }}>{t.name}</div>
+                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.players.length} players</div>
+                                        </div>
+                                        <Button variant="danger" onClick={() => handleDelete(t.name)} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>🗑</Button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
-    </div>
-);
+    );
+};
 
 export const SetupScreen = () => {
     const { updateSettings, setPlayers, startGame } = useGame();

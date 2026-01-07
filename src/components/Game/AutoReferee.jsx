@@ -4,7 +4,6 @@ import { useTimer } from '../../hooks/useTimer';
 import { Button } from '../Shared/Button';
 import { GAME_PHASES } from '../../constants/roles';
 import { WinDeclaration } from './WinDeclaration';
-import { ActionLog } from './ActionLog';
 import { RoleInfoPopup } from '../Shared/RoleInfoPopup';
 
 // Night sequence steps with default durations
@@ -23,6 +22,9 @@ export const AutoReferee = () => {
     const { state, dispatch, nextPhase, checkWinCondition, declareWin, logAction } = useGame();
     const { players, settings, day, phase, logs, nightStep } = state;
 
+    // Flip card state
+    const [isFlipped, setIsFlipped] = useState(false);
+
     // Get night steps from settings or use defaults
     const NIGHT_STEPS = settings.nightSteps || DEFAULT_NIGHT_STEPS;
 
@@ -36,9 +38,9 @@ export const AutoReferee = () => {
 
     // Track performed actions this round
     const [roundActions, setRoundActions] = useState({
-        mafiaKill: null,      // { target: playerId, killer: name }
-        detectiveCheck: null, // { target: playerId, detective: name }
-        doctorSave: null,     // { target: playerId, doctor: name }
+        mafiaKill: null,
+        detectiveCheck: null,
+        doctorSave: null,
     });
 
     // Pending death (will be resolved at dawn unless saved)
@@ -68,69 +70,60 @@ export const AutoReferee = () => {
         getPhaseDuration(), settings.timers.unlimited, () => { }
     );
 
-    // Night step handler - starts timer with step-specific duration
+    // Night step handler
     const setNightStep = (stepId) => {
         dispatch({ type: 'SET_NIGHT_STEP', payload: stepId });
         const step = NIGHT_STEPS.find(s => s.id === stepId);
         if (step) logAction(step.label);
-
-        // Start timer with step-specific duration
         resetTimer(getStepDuration(stepId));
         startTimer();
 
         if (stepId === 'WAKE_ALL') {
             // Resolve pending death
-            let someoneDied = false;
             if (pendingDeath && roundActions.doctorSave?.target !== pendingDeath.id) {
                 dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: pendingDeath.id, updates: { isAlive: false, deathDay: day } } });
                 logAction(`💀 ${pendingDeath.name} was killed by ${roundActions.mafiaKill?.killer || 'Mafia'}`);
-                someoneDied = true;
             } else if (pendingDeath && roundActions.doctorSave?.target === pendingDeath.id) {
                 logAction(`💉 ${pendingDeath.name} was saved by Doctor!`);
             } else if (!pendingDeath) {
                 logAction(`☀ No one died tonight`);
             }
 
-            // Summary: Who's still alive
+            // Check win condition
             const updatedPlayers = players.map(p =>
                 pendingDeath && p.id === pendingDeath.id && roundActions.doctorSave?.target !== pendingDeath.id
                     ? { ...p, isAlive: false } : p
             );
             const mafiaAlive = updatedPlayers.filter(p => p.isAlive && p.role.team === 'MAFIA').length;
             const villageAlive = updatedPlayers.filter(p => p.isAlive && p.role.team === 'VILLAGE').length;
-            const deadPlayers = updatedPlayers.filter(p => !p.isAlive);
+            logAction(`📊 Mafia: ${mafiaAlive} | Village: ${villageAlive}`);
 
-            logAction(`📊 Alive: ${mafiaAlive} Mafia, ${villageAlive} Village`);
-            if (deadPlayers.length > 0) {
-                logAction(`⚰️ Dead: ${deadPlayers.map(p => p.name).join(', ')}`);
-            }
-
-            // Reset round actions
-            setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null });
+            // Clear round actions
             setPendingDeath(null);
+            setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null });
 
-            dispatch({ type: 'INCREMENT_DAY' });
-            nextPhase(GAME_PHASES.DAY_INTRO);
+            // Move to day
+            setTimeout(() => {
+                nextPhase(GAME_PHASES.DAY_INTRO);
+                logAction(`Phase: DAY INTRO`);
+                const duration = getPhaseDuration(GAME_PHASES.DAY_INTRO);
+                resetTimer(duration);
+                startTimer();
+            }, 2000);
         }
     };
 
     const getCurrentStepIndex = () => NIGHT_STEPS.findIndex(s => s.id === nightStep);
 
-    // Check if action already performed
+    // Check if actions have been performed
     const hasMafiaActed = roundActions.mafiaKill !== null;
     const hasDetectiveActed = roundActions.detectiveCheck !== null;
     const hasDoctorActed = roundActions.doctorSave !== null;
 
-    // Action handlers
     const openActionModal = (player, type) => {
         setSelectedPlayer(player);
         setActionType(type);
-        let actors = [];
-        if (type === 'KILL') actors = aliveMafia;
-        else if (type === 'CHECK') actors = aliveDetectives;
-        else if (type === 'SAVE') actors = aliveDoctors;
-
-        setSelectedActor(actors.length === 1 ? actors[0].name : '');
+        setSelectedActor('');
         setShowActionModal(true);
     };
 
@@ -138,40 +131,35 @@ export const AutoReferee = () => {
         if (!selectedPlayer) return;
 
         if (actionType === 'KILL') {
-            // Mark as pending death instead of killing immediately
+            const killer = selectedActor || aliveMafia[0]?.name || 'Mafia';
+            logAction(`🔪 ${killer} selected ${selectedPlayer.name} to kill`);
+            setRoundActions(prev => ({ ...prev, mafiaKill: { target: selectedPlayer.id, killer } }));
             setPendingDeath(selectedPlayer);
-            setRoundActions(prev => ({ ...prev, mafiaKill: { target: selectedPlayer.id, killer: selectedActor || 'Mafia' } }));
-            logAction(`Mafia targets ${selectedPlayer.name}`);
             setNightStep('MAFIA_CLOSE');
         } else if (actionType === 'KICK') {
             dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: selectedPlayer.id, updates: { isAlive: false, deathDay: day } } });
-            logAction(`${selectedPlayer.name} voted out`);
-
-            const updated = players.map(p => p.id === selectedPlayer.id ? { ...p, isAlive: false } : p);
-            const win = checkWinCondition(updated, selectedPlayer, true);
-            if (win) {
-                declareWin(win.team, win.message);
-            } else {
-                setTimeout(() => {
-                    dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' });
-                    setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null });
-                    nextPhase(GAME_PHASES.NIGHT_INTRO);
-                }, 500);
-            }
+            logAction(`🗳 ${selectedPlayer.name} was voted out`);
+            checkWinCondition();
         } else if (actionType === 'CHECK') {
+            const detective = selectedActor || aliveDetectives[0]?.name || 'Detective';
             const isMafia = selectedPlayer.role.team === 'MAFIA';
-            const result = isMafia ? '🔴 MAFIA' : '🟢 NOT MAFIA';
-            setRoundActions(prev => ({ ...prev, detectiveCheck: { target: selectedPlayer.id, detective: selectedActor } }));
-            logAction(`${selectedActor || 'Detective'} checked ${selectedPlayer.name} → ${result}`);
+            logAction(`🔍 ${detective} checked ${selectedPlayer.name}: ${isMafia ? '🔴 MAFIA' : '🟢 NOT MAFIA'}`);
+            setRoundActions(prev => ({ ...prev, detectiveCheck: { target: selectedPlayer.id, detective } }));
             setNightStep('DETECTIVE_CLOSE');
         } else if (actionType === 'SAVE') {
-            setRoundActions(prev => ({ ...prev, doctorSave: { target: selectedPlayer.id, doctor: selectedActor } }));
-            logAction(`${selectedActor || 'Doctor'} protects ${selectedPlayer.name}`);
+            const doctor = selectedActor || aliveDoctors[0]?.name || 'Doctor';
+            logAction(`💉 ${doctor} saved ${selectedPlayer.name}`);
+            setRoundActions(prev => ({ ...prev, doctorSave: { target: selectedPlayer.id, doctor } }));
             setNightStep('DOCTOR_CLOSE');
         }
 
         setShowActionModal(false);
-        setSelectedPlayer(null);
+    };
+
+    const handleForceKill = (player) => {
+        dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: player.id, updates: { isAlive: false, deathDay: day } } });
+        logAction(`⚡ ${player.name} force killed by referee`);
+        checkWinCondition();
     };
 
     const handleRevive = (player) => {
@@ -182,179 +170,189 @@ export const AutoReferee = () => {
     const advancePhase = (targetPhase) => {
         nextPhase(targetPhase);
         logAction(`Phase: ${targetPhase.replace(/_/g, ' ')}`);
-        // Start timer for the new phase
         const duration = getPhaseDuration(targetPhase);
         resetTimer(duration);
         startTimer();
     };
 
-    // Styles
-    const btnStyle = { minHeight: '48px', fontSize: '0.95rem', padding: '12px 16px' };
+    // Computed values
     const isNight = phase === GAME_PHASES.NIGHT_INTRO || phase === GAME_PHASES.NIGHT_ACTIVE;
     const isMafiaWake = nightStep === 'MAFIA_WAKE';
     const isDetWake = nightStep === 'DETECTIVE_WAKE';
     const isDocWake = nightStep === 'DOCTOR_WAKE';
+    const displayPhase = isNight ? (NIGHT_STEPS[getCurrentStepIndex()]?.label || nightStep.replace(/_/g, ' ')) : phase?.replace(/_/g, ' ') || '';
+
+    const btnStyle = { minHeight: '48px', fontSize: '0.95rem', padding: '12px 16px' };
 
     return (
-        <div className="fade-in" style={{ padding: '16px', paddingBottom: '60px' }}>
-            {/* HEADER */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '8px' }}>
-                <h2 style={{ fontSize: '1.3rem', margin: 0 }}>Referee</h2>
-                <Button variant="secondary" onClick={() => { if (confirm('End game?')) dispatch({ type: 'RESET_GAME' }); }} style={{ ...btnStyle, width: 'auto', padding: '8px 12px' }}>
-                    End
-                </Button>
-            </div>
+        <div style={{ height: '80vh', width: '100%', position: 'relative' }}>
+            {/* FLIP CARD CONTAINER */}
+            <div className={`flip-container ${isFlipped ? 'flipped' : ''}`} style={{ height: '100%' }}>
+                <div className="flipper" style={{ height: '100%' }}>
 
-            {/* TIMER DISPLAY */}
-            <div style={{
-                background: 'var(--bg-tertiary)',
-                padding: '16px',
-                borderRadius: 'var(--radius-md)',
-                marginBottom: '16px',
-                textAlign: 'center',
-                border: '2px solid var(--primary)'
-            }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--primary)' }}>Day {day}</span>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        {isNight ? nightStep.replace(/_/g, ' ') : phase.replace(/_/g, ' ')}
-                    </span>
-                </div>
-
-                <div style={{ fontSize: '4rem', fontFamily: 'monospace', fontWeight: 'bold', color: timeLeft < 10 && timeLeft > 0 ? 'var(--danger)' : 'white' }}>
-                    {formattedTime}
-                </div>
-
-                {/* Main Controls - Icon only, single line */}
-                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginTop: '12px' }}>
-                    <Button variant="secondary" onClick={() => {
-                        if (phase === GAME_PHASES.DISCUSSION) advancePhase(GAME_PHASES.DAY_INTRO);
-                        else if (phase === GAME_PHASES.VOTING) advancePhase(GAME_PHASES.DISCUSSION);
-                        else if (phase === GAME_PHASES.DAY_INTRO) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
-                        else if (isNight && getCurrentStepIndex() > 0) setNightStep(NIGHT_STEPS[getCurrentStepIndex() - 1].id);
-                    }} style={{ padding: '10px 14px', minHeight: '40px' }}>⏮</Button>
-
-                    <Button variant="secondary" onClick={isRunning ? pause : startTimer} style={{ padding: '10px 14px', minHeight: '40px' }}>
-                        {isRunning ? '⏸' : '▶'}
-                    </Button>
-
-                    <Button variant="secondary" onClick={() => resetTimer(isNight ? getStepDuration(nightStep) : getPhaseDuration())} style={{ padding: '10px 14px', minHeight: '40px' }}>↺</Button>
-
-                    <Button variant="secondary" onClick={() => {
-                        if (phase === GAME_PHASES.DAY_INTRO) advancePhase(GAME_PHASES.DISCUSSION);
-                        else if (phase === GAME_PHASES.DISCUSSION) advancePhase(GAME_PHASES.VOTING);
-                        else if (phase === GAME_PHASES.VOTING) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
-                        else if (isNight) setNightStep('WAKE_ALL');
-                    }} style={{ padding: '10px 14px', minHeight: '40px' }}>⏭</Button>
-                </div>
-
-                {/* Night Steps - Swipe Style */}
-                {isNight && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
-                        <Button
-                            variant="secondary"
-                            onClick={() => getCurrentStepIndex() > 0 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() - 1].id)}
-                            disabled={getCurrentStepIndex() <= 0}
-                            style={{ padding: '8px 12px', opacity: getCurrentStepIndex() <= 0 ? 0.3 : 1 }}
-                        >◀</Button>
-                        <div style={{
-                            background: 'var(--bg-tertiary)',
-                            padding: '12px 20px',
-                            borderRadius: 'var(--radius-md)',
-                            minWidth: '160px',
-                            textAlign: 'center',
-                            border: '2px solid var(--primary)'
-                        }}>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
-                                {NIGHT_STEPS[getCurrentStepIndex()]?.label || 'Night'}
+                    {/* ===== FRONT CARD: Timer & Controls ===== */}
+                    <div className="front" style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '20px',
+                        background: 'var(--bg-secondary)',
+                        textAlign: 'center',
+                        border: '2px solid var(--primary)',
+                        borderRadius: 'var(--radius-lg)',
+                    }}>
+                        {/* Day & Phase Header */}
+                        <div style={{ marginBottom: '16px' }}>
+                            <div style={{ fontSize: '1rem', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 'bold' }}>
+                                Day {day}
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                {getCurrentStepIndex() + 1} / {NIGHT_STEPS.length}
+                            <div style={{ fontSize: '1.4rem', color: 'var(--text-main)', fontWeight: '300', marginTop: '4px' }}>
+                                {displayPhase}
                             </div>
                         </div>
-                        <Button
-                            variant="secondary"
-                            onClick={() => getCurrentStepIndex() < NIGHT_STEPS.length - 1 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() + 1].id)}
-                            disabled={getCurrentStepIndex() >= NIGHT_STEPS.length - 1}
-                            style={{ padding: '8px 12px', opacity: getCurrentStepIndex() >= NIGHT_STEPS.length - 1 ? 0.3 : 1 }}
-                        >▶</Button>
-                    </div>
-                )}
 
-                {/* Skip Action Buttons for Night */}
-                {isNight && (isMafiaWake && !hasMafiaActed) && (
-                    <Button variant="secondary" onClick={() => { logAction('Mafia skipped'); setRoundActions(prev => ({ ...prev, mafiaKill: { target: null, killer: 'None' } })); setNightStep('MAFIA_CLOSE'); }} style={{ ...btnStyle, marginTop: '8px', width: '100%', fontSize: '0.85rem' }}>Skip Kill</Button>
-                )}
-                {isNight && (isDetWake && !hasDetectiveActed) && (
-                    <Button variant="secondary" onClick={() => { logAction('Detective skipped'); setRoundActions(prev => ({ ...prev, detectiveCheck: { target: null } })); setNightStep('DETECTIVE_CLOSE'); }} style={{ ...btnStyle, marginTop: '8px', width: '100%', fontSize: '0.85rem' }}>Skip Check</Button>
-                )}
-                {isNight && (isDocWake && !hasDoctorActed) && (
-                    <Button variant="secondary" onClick={() => { logAction('Doctor skipped'); setRoundActions(prev => ({ ...prev, doctorSave: { target: null } })); setNightStep('DOCTOR_CLOSE'); }} style={{ ...btnStyle, marginTop: '8px', width: '100%', fontSize: '0.85rem' }}>Skip Save</Button>
-                )}
-
-                {/* Quick Phase Jumps */}
-                <div style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginTop: '10px' }}>
-                    <Button variant={isNight ? 'primary' : 'secondary'} onClick={() => { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }} style={{ padding: '6px 12px', fontSize: '0.8rem', minHeight: '36px' }}>Night</Button>
-                    <Button variant={phase === GAME_PHASES.DAY_INTRO ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DAY_INTRO)} style={{ padding: '6px 12px', fontSize: '0.8rem', minHeight: '36px' }}>Day</Button>
-                    <Button variant={phase === GAME_PHASES.DISCUSSION ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DISCUSSION)} style={{ padding: '6px 12px', fontSize: '0.8rem', minHeight: '36px' }}>Talk</Button>
-                    <Button variant={phase === GAME_PHASES.VOTING ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.VOTING)} style={{ padding: '6px 12px', fontSize: '0.8rem', minHeight: '36px' }}>Vote</Button>
-                </div>
-            </div>
-
-            {/* ACTION LOG BUTTON */}
-            <Button variant="secondary" onClick={() => setShowLogs(true)} style={{ ...btnStyle, marginBottom: '16px', width: '100%' }}>
-                📜 View Action Log ({logs.length})
-            </Button>
-
-            {/* PLAYERS */}
-            <h3 style={{ fontSize: '1rem', margin: '16px 0 12px' }}>Players</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {players.map(player => {
-                    const isPendingDeath = pendingDeath?.id === player.id;
-                    const canMafiaTarget = player.role.team !== 'MAFIA';
-                    const canDetTarget = true; // Det can check anyone
-                    const canDocTarget = true; // Doc can save anyone including self
-
-                    return (
-                        <div key={player.id} style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '14px',
-                            background: isPendingDeath ? 'rgba(239, 68, 68, 0.2)' : (player.isAlive ? 'var(--bg-tertiary)' : 'rgba(100,100,100,0.1)'),
-                            borderRadius: 'var(--radius-md)',
-                            borderLeft: `4px solid ${player.role.color || 'var(--text-muted)'}`,
-                            opacity: player.isAlive ? 1 : 0.5
+                        {/* LARGE TIMER */}
+                        <div className="responsive-timer" style={{
+                            fontFamily: 'monospace',
+                            fontWeight: 'bold',
+                            color: timeLeft < 10 && timeLeft > 0 ? 'var(--danger)' : 'white',
+                            textShadow: '0 0 40px rgba(0,0,0,0.3)',
+                            margin: '20px 0',
                         }}>
-                            <div onClick={() => setViewingRole(player.role)} style={{ cursor: 'pointer' }}>
-                                <div style={{ fontWeight: 'bold', fontSize: '1.05rem', textDecoration: player.isAlive ? 'none' : 'line-through' }}>
-                                    {player.name} {isPendingDeath && '💀'}
+                            {formattedTime}
+                        </div>
+
+                        {/* MAIN CONTROLS */}
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '16px' }}>
+                            <Button variant="secondary" onClick={() => {
+                                if (phase === GAME_PHASES.DISCUSSION) advancePhase(GAME_PHASES.DAY_INTRO);
+                                else if (phase === GAME_PHASES.VOTING) advancePhase(GAME_PHASES.DISCUSSION);
+                                else if (phase === GAME_PHASES.DAY_INTRO) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
+                                else if (isNight && getCurrentStepIndex() > 0) setNightStep(NIGHT_STEPS[getCurrentStepIndex() - 1].id);
+                            }} style={{ padding: '12px 18px', fontSize: '1.3rem', minHeight: '50px' }}>⏮</Button>
+
+                            <Button variant={isRunning ? 'secondary' : 'primary'} onClick={isRunning ? pause : startTimer} style={{ padding: '12px 24px', fontSize: '1.5rem', minHeight: '50px' }}>
+                                {isRunning ? '⏸' : '▶'}
+                            </Button>
+
+                            <Button variant="secondary" onClick={() => resetTimer(isNight ? getStepDuration(nightStep) : getPhaseDuration())} style={{ padding: '12px 18px', fontSize: '1.3rem', minHeight: '50px' }}>↺</Button>
+
+                            <Button variant="secondary" onClick={() => {
+                                if (phase === GAME_PHASES.DAY_INTRO) advancePhase(GAME_PHASES.DISCUSSION);
+                                else if (phase === GAME_PHASES.DISCUSSION) advancePhase(GAME_PHASES.VOTING);
+                                else if (phase === GAME_PHASES.VOTING) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
+                                else if (isNight) setNightStep('WAKE_ALL');
+                            }} style={{ padding: '12px 18px', fontSize: '1.3rem', minHeight: '50px' }}>⏭</Button>
+                        </div>
+
+                        {/* PHASE JUMP BUTTONS */}
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginBottom: '16px' }}>
+                            <Button variant={isNight ? 'primary' : 'secondary'} onClick={() => { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>🌙</Button>
+                            <Button variant={phase === GAME_PHASES.DAY_INTRO ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DAY_INTRO)} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>☀️</Button>
+                            <Button variant={phase === GAME_PHASES.DISCUSSION ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DISCUSSION)} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>💬</Button>
+                            <Button variant={phase === GAME_PHASES.VOTING ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.VOTING)} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>🗳️</Button>
+                        </div>
+
+                        {/* NIGHT STEP NAVIGATOR */}
+                        {isNight && (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '16px' }}>
+                                <Button variant="secondary" onClick={() => getCurrentStepIndex() > 0 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() - 1].id)} disabled={getCurrentStepIndex() <= 0} style={{ padding: '8px 12px', opacity: getCurrentStepIndex() <= 0 ? 0.3 : 1 }}>◀</Button>
+                                <div style={{ background: 'var(--bg-tertiary)', padding: '10px 16px', borderRadius: 'var(--radius-md)', minWidth: '140px', textAlign: 'center', border: '2px solid var(--primary)' }}>
+                                    <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>{NIGHT_STEPS[getCurrentStepIndex()]?.label || 'Night'}</div>
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{getCurrentStepIndex() + 1} / {NIGHT_STEPS.length}</div>
                                 </div>
-                                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{player.role.name} 👁</div>
+                                <Button variant="secondary" onClick={() => getCurrentStepIndex() < NIGHT_STEPS.length - 1 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() + 1].id)} disabled={getCurrentStepIndex() >= NIGHT_STEPS.length - 1} style={{ padding: '8px 12px', opacity: getCurrentStepIndex() >= NIGHT_STEPS.length - 1 ? 0.3 : 1 }}>▶</Button>
                             </div>
-                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                {player.isAlive ? (
-                                    <>
-                                        {isMafiaWake && !hasMafiaActed && canMafiaTarget && (
-                                            <Button variant="danger" onClick={() => openActionModal(player, 'KILL')} style={{ ...btnStyle, padding: '8px 12px' }}>Kill</Button>
-                                        )}
-                                        {isDetWake && !hasDetectiveActed && (
-                                            <Button variant="secondary" onClick={() => openActionModal(player, 'CHECK')} style={{ ...btnStyle, padding: '8px 12px' }}>Check</Button>
-                                        )}
-                                        {isDocWake && !hasDoctorActed && (
-                                            <Button variant="secondary" onClick={() => openActionModal(player, 'SAVE')} style={{ ...btnStyle, padding: '8px 12px' }}>Save</Button>
-                                        )}
-                                        {phase === GAME_PHASES.VOTING && (
-                                            <Button variant="primary" onClick={() => openActionModal(player, 'KICK')} style={{ ...btnStyle, padding: '8px 12px' }}>Kick</Button>
-                                        )}
-                                    </>
-                                ) : (
-                                    player.deathDay === day && (
-                                        <Button variant="secondary" onClick={() => handleRevive(player)} style={{ ...btnStyle, padding: '8px 12px' }}>Revive</Button>
-                                    )
-                                )}
-                            </div>
+                        )}
+
+                        {/* SKIP BUTTONS FOR NIGHT ACTIONS */}
+                        {isNight && isMafiaWake && !hasMafiaActed && (
+                            <Button variant="secondary" onClick={() => { logAction('Mafia skipped'); setRoundActions(prev => ({ ...prev, mafiaKill: { target: null, killer: 'None' } })); setNightStep('MAFIA_CLOSE'); }} style={{ marginBottom: '8px', width: '100%', maxWidth: '200px' }}>Skip Kill</Button>
+                        )}
+                        {isNight && isDetWake && !hasDetectiveActed && (
+                            <Button variant="secondary" onClick={() => { logAction('Detective skipped'); setRoundActions(prev => ({ ...prev, detectiveCheck: { target: null } })); setNightStep('DETECTIVE_CLOSE'); }} style={{ marginBottom: '8px', width: '100%', maxWidth: '200px' }}>Skip Check</Button>
+                        )}
+                        {isNight && isDocWake && !hasDoctorActed && (
+                            <Button variant="secondary" onClick={() => { logAction('Doctor skipped'); setRoundActions(prev => ({ ...prev, doctorSave: { target: null } })); setNightStep('DOCTOR_CLOSE'); }} style={{ marginBottom: '8px', width: '100%', maxWidth: '200px' }}>Skip Save</Button>
+                        )}
+
+                        {/* FLIP TO REFEREE TOOLS */}
+                        <Button variant="secondary" onClick={() => setIsFlipped(true)} style={{ marginTop: 'auto', padding: '12px 24px', borderRadius: '30px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}>
+                            ⚙️ Referee Tools
+                        </Button>
+                    </div>
+
+                    {/* ===== BACK CARD: Players & Actions ===== */}
+                    <div className="back" style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '16px',
+                        background: 'var(--bg-primary)',
+                        overflowY: 'auto',
+                    }}>
+                        {/* BACK TO TIMER */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                            <Button variant="secondary" onClick={() => setIsFlipped(false)} style={{ padding: '10px 16px' }}>↩ Back to Timer</Button>
+                            <Button variant="secondary" onClick={() => setShowLogs(true)} style={{ padding: '10px 16px' }}>📜 Log ({logs.length})</Button>
                         </div>
-                    );
-                })}
+
+                        {/* HEADER */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                            <h3 style={{ margin: 0 }}>Players ({alivePlayers.length} alive)</h3>
+                            <Button variant="danger" onClick={() => { if (confirm('End game?')) dispatch({ type: 'RESET_GAME' }); }} style={{ padding: '8px 12px', fontSize: '0.85rem' }}>End Game</Button>
+                        </div>
+
+                        {/* PLAYER LIST */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+                            {players.map(player => {
+                                const isPendingDeath = pendingDeath?.id === player.id;
+                                const canMafiaTarget = player.role.team !== 'MAFIA';
+
+                                return (
+                                    <div key={player.id} style={{
+                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                        padding: '12px',
+                                        background: isPendingDeath ? 'rgba(239, 68, 68, 0.2)' : (player.isAlive ? 'var(--bg-tertiary)' : 'rgba(100,100,100,0.1)'),
+                                        borderRadius: 'var(--radius-md)',
+                                        borderLeft: `4px solid ${player.role.color || 'var(--text-muted)'}`,
+                                        opacity: player.isAlive ? 1 : 0.5
+                                    }}>
+                                        <div onClick={() => setViewingRole(player.role)} style={{ cursor: 'pointer', flex: 1 }}>
+                                            <div style={{ fontWeight: 'bold', fontSize: '1rem', textDecoration: player.isAlive ? 'none' : 'line-through' }}>
+                                                {player.name} {isPendingDeath && '💀'}
+                                            </div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{player.role.name} 👁</div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                            {player.isAlive ? (
+                                                <>
+                                                    {isMafiaWake && !hasMafiaActed && canMafiaTarget && (
+                                                        <Button variant="danger" onClick={() => openActionModal(player, 'KILL')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Kill</Button>
+                                                    )}
+                                                    {isDetWake && !hasDetectiveActed && (
+                                                        <Button variant="secondary" onClick={() => openActionModal(player, 'CHECK')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Check</Button>
+                                                    )}
+                                                    {isDocWake && !hasDoctorActed && (
+                                                        <Button variant="secondary" onClick={() => openActionModal(player, 'SAVE')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Save</Button>
+                                                    )}
+                                                    {phase === GAME_PHASES.VOTING && (
+                                                        <Button variant="primary" onClick={() => openActionModal(player, 'KICK')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Kick</Button>
+                                                    )}
+                                                    <Button variant="danger" onClick={() => handleForceKill(player)} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>⚡</Button>
+                                                </>
+                                            ) : (
+                                                player.deathDay === day && (
+                                                    <Button variant="secondary" onClick={() => handleRevive(player)} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Revive</Button>
+                                                )
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <WinDeclaration />
