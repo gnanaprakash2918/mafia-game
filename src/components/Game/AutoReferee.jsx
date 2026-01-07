@@ -30,7 +30,28 @@ export const AutoReferee = () => {
     const [isFlipped, setIsFlipped] = useState(false);
 
     // Get night steps from settings or use defaults
-    const NIGHT_STEPS = settings.nightSteps || DEFAULT_NIGHT_STEPS;
+    const baseNightSteps = settings.nightSteps || DEFAULT_NIGHT_STEPS;
+
+    // Filter night steps to only include roles that are present in the game
+    const NIGHT_STEPS = useMemo(() => {
+        const rolePresent = {
+            decoy: players.some(p => p.role.id === 'decoy'),
+            mafia: players.some(p => p.role.team === 'MAFIA'),
+            guardian_angel: players.some(p => p.role.id === 'guardian_angel'),
+            detective: players.some(p => p.role.id === 'detective' || p.role.id === 'pi'),
+            doctor: players.some(p => p.role.id === 'doctor'),
+        };
+
+        return baseNightSteps.filter(step => {
+            if (step.id === 'SLEEP' || step.id === 'WAKE_ALL') return true;
+            if (step.id.includes('DECOY')) return rolePresent.decoy;
+            if (step.id.includes('MAFIA')) return rolePresent.mafia;
+            if (step.id.includes('GUARDIAN_ANGEL')) return rolePresent.guardian_angel;
+            if (step.id.includes('DETECTIVE')) return rolePresent.detective;
+            if (step.id.includes('DOCTOR')) return rolePresent.doctor;
+            return true; // Keep custom steps
+        });
+    }, [baseNightSteps, players]);
 
     // Night action tracking
     const [showActionModal, setShowActionModal] = useState(false);
@@ -79,7 +100,7 @@ export const AutoReferee = () => {
     };
 
     const getStepDuration = (stepId) => {
-        const step = NIGHT_STEPS.find(s => s.id === stepId);
+        const step = baseNightSteps.find(s => s.id === stepId);
         return step?.duration || 15;
     };
 
@@ -94,6 +115,11 @@ export const AutoReferee = () => {
         if (step) logAction(step.label);
         resetTimer(getStepDuration(stepId));
         startTimer();
+
+        // Auto-flip to referee tools on WAKE steps (except WAKE_ALL which is the end)
+        if (stepId.includes('WAKE') && stepId !== 'WAKE_ALL') {
+            setIsFlipped(true);
+        }
 
         if (stepId === 'WAKE_ALL') {
             let finalDeath = pendingDeath;
@@ -215,6 +241,7 @@ export const AutoReferee = () => {
         }
 
         setShowActionModal(false);
+        setIsFlipped(false); // Auto-flip back to timer after action
     };
 
     const handleForceKill = (player) => {
@@ -234,6 +261,11 @@ export const AutoReferee = () => {
         const duration = getPhaseDuration(targetPhase);
         resetTimer(duration);
         startTimer();
+
+        // Auto-flip to referee tools when entering voting phase
+        if (targetPhase === GAME_PHASES.VOTING) {
+            setIsFlipped(true);
+        }
     };
 
     // Computed values
