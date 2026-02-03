@@ -97,14 +97,105 @@ const RoleSelectionStep = ({ playerCount, roles, setRoles, onNext, onBack }) => 
         return acc;
     }, {});
 
+    // --- TEMPLATE LOGIC ---
+    const [savedTemplates, setSavedTemplates] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem('mafia_role_templates') || '[]');
+        } catch { return []; }
+    });
+    const [templateName, setTemplateName] = useState('');
+    const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+
+    const DEFAULT_TEMPLATES = [
+        { name: 'Standard (8+)', roles: { mafia: 2, doctor: 1, detective: 1 }, fill: 'villager' },
+        { name: 'Small Game (5-7)', roles: { mafia: 1, doctor: 1, detective: 1 }, fill: 'villager' },
+        { name: 'Chaos', roles: { mafia: 2, jester: 1, doctor: 1, detective: 1 }, fill: 'villager' },
+    ];
+
+    const applyTemplate = (template) => {
+        // 1. Reset all roles to 0
+        const newRoles = {};
+
+        // 2. Apply template fixed roles
+        let usedSlots = 0;
+        Object.entries(template.roles).forEach(([id, count]) => {
+            newRoles[id] = count;
+            usedSlots += count;
+        });
+
+        // 3. Smart Fill
+        const remaining = playerCount - usedSlots;
+        if (remaining > 0) {
+            newRoles[template.fill || 'villager'] = (newRoles[template.fill || 'villager'] || 0) + remaining;
+        } else if (remaining < 0) {
+            // If template uses too many slots, we warn or just cap functionality?
+            // For now let's just let it be negative/overfilled and let user adjust (remaining will be negative in UI)
+        }
+
+        setRoles(newRoles);
+    };
+
+    const saveTemplate = () => {
+        if (!templateName.trim()) return;
+        const newTemplate = {
+            name: templateName,
+            roles: { ...roles }, // snapshot current distribution
+            fill: null // specific snapshot, no auto-fill logic for custom yet
+        };
+        const updated = [...savedTemplates, newTemplate];
+        setSavedTemplates(updated);
+        localStorage.setItem('mafia_role_templates', JSON.stringify(updated));
+        setTemplateName('');
+        setShowSaveTemplate(false);
+    };
+
+    const deleteTemplate = (idx) => {
+        const updated = savedTemplates.filter((_, i) => i !== idx);
+        setSavedTemplates(updated);
+        localStorage.setItem('mafia_role_templates', JSON.stringify(updated));
+    };
+
     return (
         <div className="setup-step fade-in">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <h2 style={{ fontSize: '1.5rem' }}>Assign Roles</h2>
-                <span style={{ color: remaining === 0 ? 'var(--success)' : 'var(--accent)', fontWeight: 'bold' }}>
+                <span style={{ color: remaining === 0 ? 'var(--success)' : (remaining < 0 ? 'var(--danger)' : 'var(--accent)'), fontWeight: 'bold' }}>
                     {remaining} left
                 </span>
             </div>
+
+            {/* TEMPLATE BAR */}
+            <div style={{ paddingBottom: '16px', marginBottom: '16px', overflowX: 'auto', display: 'flex', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                {DEFAULT_TEMPLATES.map((t, i) => (
+                    <Button key={`def-${i}`} variant="secondary" size="sm" onClick={() => applyTemplate(t)} style={{ whiteSpace: 'nowrap', borderStyle: 'dotted' }}>
+                        {t.name}
+                    </Button>
+                ))}
+                <div style={{ width: '1px', background: 'rgba(255,255,255,0.2)', margin: '0 4px' }}></div>
+                {savedTemplates.map((t, i) => (
+                    <div key={`saved-${i}`} style={{ position: 'relative', display: 'flex' }}>
+                        <Button variant="secondary" size="sm" onClick={() => setRoles(t.roles || t)} style={{ whiteSpace: 'nowrap', paddingRight: '28px' }}>
+                            {t.name}
+                        </Button>
+                        <div onClick={(e) => { e.stopPropagation(); deleteTemplate(i); }} style={{ position: 'absolute', right: '0', top: '0', bottom: '0', width: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.8rem' }}>✕</div>
+                    </div>
+                ))}
+                <Button size="sm" variant="secondary" onClick={() => setShowSaveTemplate(!showSaveTemplate)} style={{ whiteSpace: 'nowrap' }}>
+                    {showSaveTemplate ? 'Cancel' : '+ Save'}
+                </Button>
+            </div>
+
+            {showSaveTemplate && (
+                <div className="fade-in" style={{ display: 'flex', gap: '8px', marginBottom: '24px', background: 'var(--bg-tertiary)', padding: '12px', borderRadius: 'var(--radius-md)' }}>
+                    <input
+                        placeholder="Template Name..."
+                        value={templateName}
+                        onChange={e => setTemplateName(e.target.value)}
+                        style={{ flex: 1, padding: '8px', borderRadius: 'var(--radius-sm)', border: 'none' }}
+                    />
+                    <Button size="sm" onClick={saveTemplate} disabled={!templateName.trim()}>Save</Button>
+                </div>
+            )}
 
             {showCustomCreator ? (
                 <CustomRoleCreator
