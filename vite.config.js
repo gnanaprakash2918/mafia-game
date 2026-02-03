@@ -4,5 +4,8 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: {
+    port: 9090,
+  },
   base: process.env.VITE_BASE || '/mafia-game/',
 })

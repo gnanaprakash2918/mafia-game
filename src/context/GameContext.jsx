@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useCallback } from 'react';
 import { GAME_PHASES, ROLES } from '../constants/roles';
+import { useWakeLock } from '../hooks/useWakeLock';
 
 const GameContext = createContext();
 
@@ -42,7 +43,7 @@ const gameReducer = (state, action) => {
         case 'START_GAME':
             return {
                 ...state,
-                phase: GAME_PHASES.ROLE_REVEAL,
+                phase: GAME_PHASES.REFEREE_PREVIEW,
                 currentTurnIndex: 0,
             };
         case 'NEXT_PHASE':
@@ -78,13 +79,14 @@ const gameReducer = (state, action) => {
             Object.entries(settings.roles).forEach(([key, count]) => {
                 for (let i = 0; i < count; i++) rolePool.push(key);
             });
-            rolePool.sort(() => Math.random() - 0.5);
+            // Fisher-Yates Shuffle (True Randomness)
+            for (let i = rolePool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [rolePool[i], rolePool[j]] = [rolePool[j], rolePool[i]];
+            }
 
             const newPlayers = players.map((p, i) => {
                 const roleId = rolePool[i];
-                // Fallback to finding role in ROLES (Standard) or Custom (if stored in state, but ROLES is constant module...)
-                // Issue: Custom roles added to ROLES export in SetupScreen might be lost if module reloaded? 
-                // No, module state persists in session.
                 const roleDef = ROLES[Object.keys(ROLES).find(k => ROLES[k].id === roleId)];
                 return {
                     id: `p-${i}-${Date.now()}`,
@@ -99,7 +101,7 @@ const gameReducer = (state, action) => {
                 ...initialState,
                 players: newPlayers,
                 settings: settings, // Keep settings
-                phase: GAME_PHASES.ROLE_REVEAL,
+                phase: GAME_PHASES.REFEREE_PREVIEW,
             };
         }
         case 'RESET_GAME':
@@ -111,6 +113,12 @@ const gameReducer = (state, action) => {
 
 export const GameProvider = ({ children }) => {
     const [state, dispatch] = useReducer(gameReducer, initialState);
+    const { isLocked: isScreenLocked, requestWakeLock, releaseWakeLock } = useWakeLock();
+
+    const toggleWakeLock = useCallback(() => {
+        if (isScreenLocked) releaseWakeLock();
+        else requestWakeLock();
+    }, [isScreenLocked, requestWakeLock, releaseWakeLock]);
 
     const updateSettings = useCallback((settings) => {
         dispatch({ type: 'UPDATE_SETTINGS', payload: settings });
@@ -154,9 +162,6 @@ export const GameProvider = ({ children }) => {
     }, []);
 
     const killPlayer = useCallback((playerId) => {
-        // We need to access state to check win, but usually state is stale in callback.
-        // Dispatch handles update. We can check win in Effect in App or here if we access latest state.
-        // For simplicity: Update state, then App.jsx or AutoReferee checks win.
         dispatch({
             type: 'UPDATE_PLAYER_STATUS',
             payload: { id: playerId, updates: { isAlive: false } },
@@ -182,6 +187,8 @@ export const GameProvider = ({ children }) => {
         declareWin,
         checkWinCondition, // Exported for components to use
         logAction,
+        isScreenLocked,
+        toggleWakeLock,
         dispatch,
     };
 

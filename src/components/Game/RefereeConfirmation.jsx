@@ -36,10 +36,9 @@ export const RefereeConfirmation = () => {
                     marginBottom: '32px',
                     border: '1px solid rgba(255, 255, 255, 0.1)'
                 }}>
-                    <span style={{ fontSize: '3rem', display: 'block', marginBottom: '16px' }}>👮</span>
-                    <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
                         Referee Section Ahead
-                    </p>
+                    </div>
                 </div>
 
                 <Button onClick={handleConfirm} style={{ width: '100%' }}>
