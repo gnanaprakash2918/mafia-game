@@ -53,74 +53,57 @@ export const GridReveal = () => {
     if (!currentPlayer) return null; // Should not happen if logic is correct
 
     return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px' }}>
-            <h2 style={{ marginBottom: '8px' }}>Pick a Card</h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
+        <div className="grid-reveal-container">
+            <h2 className="grid-reveal-title">Pick a Card</h2>
+            <p className="grid-reveal-subtitle">
                 Next player, pick a card!
             </p>
 
             {/* THE GRID */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
-                gap: '12px',
-                width: '100%',
-                maxWidth: '600px',
-                flex: 1,
-                alignContent: 'center'
-            }}>
+            <div className="card-grid">
                 {players.map((_, i) => {
                     const isTaken = !availableCards.includes(i);
                     const isRevealed = revealedCard?.index === i;
 
+                    // Determine class strings
+                    let cardClass = "role-card";
+                    if (isRevealed) cardClass += " revealed";
+                    else if (isTaken) cardClass += " taken";
+                    else cardClass += " available";
+
                     return (
-                        <div key={i}
+                        <button
+                            key={i}
+                            className={cardClass}
                             onClick={() => !isTaken && handleCardClick(i)}
+                            disabled={isTaken}
+                            aria-label={isTaken ? "Card taken" : "Pick card"}
+                            aria-pressed={isRevealed}
                             style={{
-                                aspectRatio: '2/3',
-                                background: isRevealed
-                                    ? (revealedCard.role.color || 'var(--bg-secondary)')
-                                    : (isTaken ? 'transparent' : 'linear-gradient(135deg, var(--primary), var(--bg-tertiary))'),
-                                border: isTaken ? '2px dashed var(--bg-tertiary)' : '2px solid rgba(255,255,255,0.1)',
-                                borderRadius: 'var(--radius-sm)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '2rem',
-                                cursor: isTaken ? 'default' : 'pointer',
-                                opacity: isTaken ? 0.3 : 1,
-                                transform: isRevealed ? 'scale(1.1)' : 'scale(1)',
-                                transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-                                boxShadow: isRevealed ? '0 10px 30px rgba(0,0,0,0.5)' : 'none'
+                                // Only dynamic style needed is the revealed role color
+                                background: isRevealed && revealedCard.role.color
+                                    ? revealedCard.role.color
+                                    : undefined
                             }}
                         >
-                            {isRevealed ? '' : (isTaken ? '' : '')}
-                        </div>
+                            {/* Content could go here if we wanted numbers or icons */}
+                        </button>
                     );
                 })}
             </div>
 
             {/* REVEAL MODAL OVERLAY */}
             {revealedCard && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.95)', zIndex: 100,
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    padding: '24px',
-                    animation: 'fadeIn 0.2s'
-                }}>
-                    <h2 style={{ color: 'var(--text-muted)', marginBottom: '32px' }}>You are the...</h2>
-                    <h1 style={{
-                        fontSize: '3.5rem',
-                        color: revealedCard.role.color || 'white',
-                        marginBottom: '16px',
-                        textAlign: 'center'
-                    }}>
+                <div className="reveal-modal-overlay">
+                    <h2 className="reveal-modal-title">You are the...</h2>
+                    <h1
+                        className="reveal-role-name"
+                        style={{ color: revealedCard.role.color || 'white' }}
+                    >
                         {revealedCard.role.name}
                     </h1>
 
-                    <p style={{ fontSize: '1.1rem', color: 'var(--text-muted)', maxWidth: '400px', textAlign: 'center', marginBottom: '48px' }}>
+                    <p className="reveal-role-desc">
                         {revealedCard.role.description}
                     </p>
 
