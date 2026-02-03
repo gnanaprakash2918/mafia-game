@@ -23,7 +23,7 @@ const DEFAULT_NIGHT_STEPS = [
 ];
 
 export const AutoReferee = () => {
-    const { state, dispatch, nextPhase, checkWinCondition, declareWin, logAction } = useGame();
+    const { state, dispatch, nextPhase, checkWinCondition, declareWin, logAction, isScreenLocked, toggleWakeLock } = useGame();
     const { players, settings, day, phase, logs, nightStep } = state;
 
     // Flip card state
@@ -79,6 +79,9 @@ export const AutoReferee = () => {
     // Decoy result popup (referee only)
     const [decoyResultPopup, setDecoyResultPopup] = useState(null);
 
+    // End Game Confirmation Modal
+    const [showEndGameModal, setShowEndGameModal] = useState(false);
+
     // Pending death (will be resolved at dawn unless saved)
     const [pendingDeath, setPendingDeath] = useState(null);
 
@@ -131,10 +134,10 @@ export const AutoReferee = () => {
                 if (angel) {
                     dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: angel.id, updates: { isAlive: false, deathDay: day } } });
                     if (pendingDeath) {
-                        logAction(`👼 ${angel.name} (Guardian Angel) sacrificed themselves to save ${pendingDeath.name}!`);
+                        logAction(`${angel.name} (Guardian Angel) sacrificed themselves to save ${pendingDeath.name}!`);
                         finalDeath = null; // Saved!
                     } else {
-                        logAction(`👼 ${angel.name} (Guardian Angel) sacrificed themselves... but no one was targeted!`);
+                        logAction(`${angel.name} (Guardian Angel) sacrificed themselves... but no one was targeted!`);
                     }
                 }
             }
@@ -147,7 +150,7 @@ export const AutoReferee = () => {
                     const randomIndex = Math.floor(Math.random() * currentAliveMafia.length);
                     decoyKilledMafia = currentAliveMafia[randomIndex];
                     dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: decoyKilledMafia.id, updates: { isAlive: false, deathDay: day } } });
-                    logAction(`🎭 Decoy activated! A mafia member died trying to kill ${finalDeath.name}!`);
+                    logAction(`Decoy activated! A mafia member died trying to kill ${finalDeath.name}!`);
                     setDecoyResultPopup({ victim: decoyKilledMafia.name }); // Show referee popup
                     finalDeath = null; // Target survives
                 }
@@ -155,16 +158,16 @@ export const AutoReferee = () => {
 
             // Doctor save check
             if (finalDeath && roundActions.doctorSave?.target === finalDeath.id) {
-                logAction(`💉 ${finalDeath.name} was saved by Doctor!`);
+                logAction(`${finalDeath.name} was saved by Doctor!`);
                 finalDeath = null;
             }
 
             // Final death resolution
             if (finalDeath) {
                 dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: finalDeath.id, updates: { isAlive: false, deathDay: day } } });
-                logAction(`💀 ${finalDeath.name} was killed by ${roundActions.mafiaKill?.killer || 'Mafia'}`);
+                logAction(`${finalDeath.name} was killed by ${roundActions.mafiaKill?.killer || 'Mafia'}`);
             } else if (!pendingDeath && !roundActions.guardianAngelSave?.used && !decoyKilledMafia) {
-                logAction(`☀ No one died tonight`);
+                logAction(`No one died tonight`);
             }
 
             // Check win condition with updated player states
@@ -176,7 +179,7 @@ export const AutoReferee = () => {
             });
             const mafiaAlive = updatedPlayers.filter(p => p.isAlive && p.role.team === 'MAFIA').length;
             const villageAlive = updatedPlayers.filter(p => p.isAlive && p.role.team === 'VILLAGE').length;
-            logAction(`📊 Mafia: ${mafiaAlive} | Village: ${villageAlive}`);
+            logAction(`Mafia: ${mafiaAlive} | Village: ${villageAlive}`);
 
             // Clear round actions (NOT usedOneShotPowers - those persist)
             setPendingDeath(null);
@@ -214,27 +217,36 @@ export const AutoReferee = () => {
 
         if (actionType === 'KILL') {
             const killer = selectedActor || aliveMafia[0]?.name || 'Mafia';
-            logAction(`🔪 ${killer} selected ${selectedPlayer.name} to kill`);
+            logAction(`${killer} selected ${selectedPlayer.name} to kill`);
             setRoundActions(prev => ({ ...prev, mafiaKill: { target: selectedPlayer.id, killer } }));
             setPendingDeath(selectedPlayer);
             setNightStep('MAFIA_CLOSE');
         } else if (actionType === 'KICK') {
             dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: selectedPlayer.id, updates: { isAlive: false, deathDay: day } } });
-            logAction(`🗳 ${selectedPlayer.name} was voted out`);
-            checkWinCondition();
+            logAction(`${selectedPlayer.name} was voted out`);
+            // Check win condition with updated player state
+            const updatedPlayers = players.map(p =>
+                p.id === selectedPlayer.id ? { ...p, isAlive: false } : p
+            );
+            const winResult = checkWinCondition(updatedPlayers, selectedPlayer, true);
+            if (winResult) {
+                declareWin(winResult.team, winResult.message);
+            }
+            setShowActionModal(false);
+            return; // Early return to skip the setIsFlipped below
         } else if (actionType === 'CHECK') {
             const detective = selectedActor || aliveDetectives[0]?.name || 'Detective';
             const isMafia = selectedPlayer.role.team === 'MAFIA';
-            logAction(`🔍 ${detective} checked ${selectedPlayer.name}: ${isMafia ? '🔴 MAFIA' : '🟢 NOT MAFIA'}`);
+            logAction(`${detective} checked ${selectedPlayer.name}: ${isMafia ? 'MAFIA' : 'NOT MAFIA'}`);
             setRoundActions(prev => ({ ...prev, detectiveCheck: { target: selectedPlayer.id, detective } }));
             setNightStep('DETECTIVE_CLOSE');
         } else if (actionType === 'SAVE') {
             const doctor = selectedActor || aliveDoctors[0]?.name || 'Doctor';
-            logAction(`💉 ${doctor} saved ${selectedPlayer.name}`);
+            logAction(`${doctor} saved ${selectedPlayer.name}`);
             setRoundActions(prev => ({ ...prev, doctorSave: { target: selectedPlayer.id, doctor } }));
             setNightStep('DOCTOR_CLOSE');
         } else if (actionType === 'DECOY') {
-            logAction(`🎭 Decoy applied to ${selectedPlayer.name}`);
+            logAction(`Decoy applied to ${selectedPlayer.name}`);
             setRoundActions(prev => ({ ...prev, decoyApply: { target: selectedPlayer.id } }));
             setUsedOneShotPowers(prev => ({ ...prev, decoy: true }));
             setNightStep('DECOY_CLOSE');
@@ -246,8 +258,15 @@ export const AutoReferee = () => {
 
     const handleForceKill = (player) => {
         dispatch({ type: 'UPDATE_PLAYER_STATUS', payload: { id: player.id, updates: { isAlive: false, deathDay: day } } });
-        logAction(`⚡ ${player.name} force killed by referee`);
-        checkWinCondition();
+        logAction(`${player.name} force killed by referee`);
+        // Check win condition with updated player state
+        const updatedPlayers = players.map(p =>
+            p.id === player.id ? { ...p, isAlive: false } : p
+        );
+        const winResult = checkWinCondition(updatedPlayers);
+        if (winResult) {
+            declareWin(winResult.team, winResult.message);
+        }
     };
 
     const handleRevive = (player) => {
@@ -280,9 +299,9 @@ export const AutoReferee = () => {
     const btnStyle = { minHeight: '48px', fontSize: '0.95rem', padding: '12px 16px' };
 
     return (
-        <div style={{ height: '80vh', width: '100%', position: 'relative' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', width: '100%', position: 'relative', overflow: 'hidden' }}>
             {/* FLIP CARD CONTAINER */}
-            <div className={`flip-container ${isFlipped ? 'flipped' : ''}`} style={{ height: '100%' }}>
+            <div className={`flip-container ${isFlipped ? 'flipped' : ''}`} style={{ flex: 1, minHeight: 0 }}>
                 <div className="flipper" style={{ height: '100%' }}>
 
                     {/* ===== FRONT CARD: Timer & Controls ===== */}
@@ -314,6 +333,7 @@ export const AutoReferee = () => {
                             color: timeLeft < 10 && timeLeft > 0 ? 'var(--danger)' : 'white',
                             textShadow: '0 0 40px rgba(0,0,0,0.3)',
                             margin: '20px 0',
+                            fontSize: 'clamp(3rem, 15vw, 8rem)', // Clamped responsive size
                         }}>
                             {formattedTime}
                         </div>
@@ -325,39 +345,39 @@ export const AutoReferee = () => {
                                 else if (phase === GAME_PHASES.VOTING) advancePhase(GAME_PHASES.DISCUSSION);
                                 else if (phase === GAME_PHASES.DAY_INTRO) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
                                 else if (isNight && getCurrentStepIndex() > 0) setNightStep(NIGHT_STEPS[getCurrentStepIndex() - 1].id);
-                            }} style={{ padding: '12px 18px', fontSize: '1.3rem', minHeight: '50px' }}>⏮</Button>
+                            }} size="lg">Back</Button>
 
-                            <Button variant={isRunning ? 'secondary' : 'primary'} onClick={isRunning ? pause : startTimer} style={{ padding: '12px 24px', fontSize: '1.5rem', minHeight: '50px' }}>
-                                {isRunning ? '⏸' : '▶'}
+                            <Button variant={isRunning ? 'secondary' : 'primary'} onClick={isRunning ? pause : startTimer} size="lg" style={{ minWidth: '120px' }}>
+                                {isRunning ? 'Pause' : 'Start'}
                             </Button>
 
-                            <Button variant="secondary" onClick={() => resetTimer(isNight ? getStepDuration(nightStep) : getPhaseDuration())} style={{ padding: '12px 18px', fontSize: '1.3rem', minHeight: '50px' }}>↺</Button>
+                            <Button variant="secondary" onClick={() => resetTimer(isNight ? getStepDuration(nightStep) : getPhaseDuration())} size="lg">Reset</Button>
 
                             <Button variant="secondary" onClick={() => {
                                 if (phase === GAME_PHASES.DAY_INTRO) advancePhase(GAME_PHASES.DISCUSSION);
                                 else if (phase === GAME_PHASES.DISCUSSION) advancePhase(GAME_PHASES.VOTING);
                                 else if (phase === GAME_PHASES.VOTING) { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); setRoundActions({ mafiaKill: null, detectiveCheck: null, doctorSave: null, decoyApply: null, guardianAngelSave: null }); advancePhase(GAME_PHASES.NIGHT_INTRO); }
                                 else if (isNight) setNightStep('WAKE_ALL');
-                            }} style={{ padding: '12px 18px', fontSize: '1.3rem', minHeight: '50px' }}>⏭</Button>
+                            }} size="lg">Skip</Button>
                         </div>
 
                         {/* PHASE JUMP BUTTONS */}
-                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginBottom: '16px' }}>
-                            <Button variant={isNight ? 'primary' : 'secondary'} onClick={() => { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>🌙</Button>
-                            <Button variant={phase === GAME_PHASES.DAY_INTRO ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DAY_INTRO)} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>☀️</Button>
-                            <Button variant={phase === GAME_PHASES.DISCUSSION ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DISCUSSION)} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>💬</Button>
-                            <Button variant={phase === GAME_PHASES.VOTING ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.VOTING)} style={{ padding: '8px 12px', fontSize: '0.8rem' }}>🗳️</Button>
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
+                            <Button variant={isNight ? 'primary' : 'secondary'} onClick={() => { dispatch({ type: 'SET_NIGHT_STEP', payload: 'IDLE' }); advancePhase(GAME_PHASES.NIGHT_INTRO); }} size="sm">Night</Button>
+                            <Button variant={phase === GAME_PHASES.DAY_INTRO ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DAY_INTRO)} size="sm">Day</Button>
+                            <Button variant={phase === GAME_PHASES.DISCUSSION ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.DISCUSSION)} size="sm">Discuss</Button>
+                            <Button variant={phase === GAME_PHASES.VOTING ? 'primary' : 'secondary'} onClick={() => advancePhase(GAME_PHASES.VOTING)} size="sm">Vote</Button>
                         </div>
 
                         {/* NIGHT STEP NAVIGATOR */}
                         {isNight && (
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '16px' }}>
-                                <Button variant="secondary" onClick={() => getCurrentStepIndex() > 0 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() - 1].id)} disabled={getCurrentStepIndex() <= 0} style={{ padding: '8px 12px', opacity: getCurrentStepIndex() <= 0 ? 0.3 : 1 }}>◀</Button>
+                                <Button variant="secondary" onClick={() => getCurrentStepIndex() > 0 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() - 1].id)} disabled={getCurrentStepIndex() <= 0} size="sm">Prev</Button>
                                 <div style={{ background: 'var(--bg-tertiary)', padding: '10px 16px', borderRadius: 'var(--radius-md)', minWidth: '140px', textAlign: 'center', border: '2px solid var(--primary)' }}>
                                     <div style={{ fontSize: '1rem', fontWeight: 'bold' }}>{NIGHT_STEPS[getCurrentStepIndex()]?.label || 'Night'}</div>
                                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{getCurrentStepIndex() + 1} / {NIGHT_STEPS.length}</div>
                                 </div>
-                                <Button variant="secondary" onClick={() => getCurrentStepIndex() < NIGHT_STEPS.length - 1 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() + 1].id)} disabled={getCurrentStepIndex() >= NIGHT_STEPS.length - 1} style={{ padding: '8px 12px', opacity: getCurrentStepIndex() >= NIGHT_STEPS.length - 1 ? 0.3 : 1 }}>▶</Button>
+                                <Button variant="secondary" onClick={() => getCurrentStepIndex() < NIGHT_STEPS.length - 1 && setNightStep(NIGHT_STEPS[getCurrentStepIndex() + 1].id)} disabled={getCurrentStepIndex() >= NIGHT_STEPS.length - 1} size="sm">Next</Button>
                             </div>
                         )}
 
@@ -379,8 +399,8 @@ export const AutoReferee = () => {
                         )}
 
                         {/* FLIP TO REFEREE TOOLS */}
-                        <Button variant="secondary" onClick={() => setIsFlipped(true)} style={{ marginTop: 'auto', padding: '12px 24px', borderRadius: '30px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}>
-                            ⚙️ Referee Tools
+                        <Button variant="secondary" onClick={() => setIsFlipped(true)} style={{ marginTop: 'auto', background: 'rgba(255,255,255,0.1)' }}>
+                            Referee Tools
                         </Button>
                     </div>
 
@@ -392,16 +412,20 @@ export const AutoReferee = () => {
                         background: 'var(--bg-primary)',
                         overflowY: 'auto',
                     }}>
-                        {/* BACK TO TIMER */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <Button variant="secondary" onClick={() => setIsFlipped(false)} style={{ padding: '10px 16px' }}>↩ Back to Timer</Button>
-                            <Button variant="secondary" onClick={() => setShowLogs(true)} style={{ padding: '10px 16px' }}>📜 Log ({logs.length})</Button>
+                            <Button variant="secondary" onClick={() => setIsFlipped(false)} size="sm">Back to Timer</Button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <Button variant="secondary" onClick={toggleWakeLock} size="sm" style={{ border: isScreenLocked ? '1px solid var(--success)' : '1px solid var(--danger)', color: isScreenLocked ? 'var(--success)' : 'var(--danger)' }}>
+                                    {isScreenLocked ? 'Screen On' : 'Screen Off'}
+                                </Button>
+                                <Button variant="secondary" onClick={() => setShowLogs(true)} size="sm">Log ({logs.length})</Button>
+                            </div>
                         </div>
 
                         {/* HEADER */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                             <h3 style={{ margin: 0 }}>Players ({alivePlayers.length} alive)</h3>
-                            <Button variant="danger" onClick={() => { if (confirm('End game?')) dispatch({ type: 'RESET_GAME' }); }} style={{ padding: '8px 12px', fontSize: '0.85rem' }}>End Game</Button>
+                            <Button variant="danger" onClick={() => setShowEndGameModal(true)} style={{ padding: '8px 12px', fontSize: '0.85rem' }}>End Game</Button>
                         </div>
 
                         {/* PLAYER LIST */}
@@ -421,9 +445,9 @@ export const AutoReferee = () => {
                                     }}>
                                         <div onClick={() => setViewingRole(player.role)} style={{ cursor: 'pointer', flex: 1 }}>
                                             <div style={{ fontWeight: 'bold', fontSize: '1rem', textDecoration: player.isAlive ? 'none' : 'line-through' }}>
-                                                {player.name} {isPendingDeath && '💀'}
+                                                {player.name} {isPendingDeath && '(Dead)'}
                                             </div>
-                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{player.role.name} 👁</div>
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{player.role.name}</div>
                                         </div>
                                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                                             {player.isAlive ? (
@@ -432,11 +456,11 @@ export const AutoReferee = () => {
                                                         <Button variant="secondary" onClick={() => openActionModal(player, 'DECOY')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Apply Decoy</Button>
                                                     )}
                                                     {isMafiaWake && !hasMafiaActed && canMafiaTarget && (
-                                                        <Button variant="danger" onClick={() => openActionModal(player, 'KILL')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Kill</Button>
+                                                        <Button variant="danger" onClick={() => openActionModal(player, 'KILL')} size="sm">Target</Button>
                                                     )}
                                                     {isGuardianAngelWake && !hasGuardianAngelActed && !usedOneShotPowers.guardianAngel && pendingDeath && (
                                                         <Button variant="secondary" onClick={() => {
-                                                            logAction(`👼 Guardian Angel chose to sacrifice themselves!`);
+                                                            logAction(`Guardian Angel chose to sacrifice themselves!`);
                                                             setRoundActions(prev => ({ ...prev, guardianAngelSave: { used: true } }));
                                                             setUsedOneShotPowers(prev => ({ ...prev, guardianAngel: true }));
                                                             setNightStep('GUARDIAN_ANGEL_CLOSE');
@@ -451,7 +475,7 @@ export const AutoReferee = () => {
                                                     {phase === GAME_PHASES.VOTING && (
                                                         <Button variant="primary" onClick={() => openActionModal(player, 'KICK')} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>Kick</Button>
                                                     )}
-                                                    <Button variant="danger" onClick={() => handleForceKill(player)} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>⚡</Button>
+                                                    <Button variant="danger" onClick={() => handleForceKill(player)} size="sm">Kill</Button>
                                                 </>
                                             ) : (
                                                 player.deathDay === day && (
@@ -549,8 +573,7 @@ export const AutoReferee = () => {
             {decoyResultPopup && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
                     <div style={{ background: 'var(--bg-secondary)', padding: '32px', borderRadius: 'var(--radius-md)', textAlign: 'center', maxWidth: '340px' }}>
-                        <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🎭</div>
-                        <h3 style={{ color: 'var(--danger)', marginBottom: '16px' }}>Decoy Activated!</h3>
+                        <div style={{ fontSize: '1.5rem', marginBottom: '16px', fontWeight: 'bold' }}>Decoy Activated!</div>
                         <p style={{ fontSize: '1.2rem', marginBottom: '16px' }}>
                             <strong>{decoyResultPopup.victim}</strong> (Mafia) was killed!
                         </p>
@@ -558,6 +581,29 @@ export const AutoReferee = () => {
                             (Only you, the referee, can see this)
                         </p>
                         <Button variant="primary" onClick={() => setDecoyResultPopup(null)} style={{ padding: '12px 32px' }}>Got it</Button>
+                    </div>
+                </div>
+            )}
+
+            {/* END GAME MODAL */}
+            {showEndGameModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.95)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'var(--bg-secondary)', padding: '32px', borderRadius: 'var(--radius-md)', textAlign: 'center', maxWidth: '340px', border: '1px solid var(--danger)' }}>
+                        <h2 style={{ fontSize: '1.5rem', marginBottom: '16px', fontWeight: 'bold' }}>End Current Game?</h2>
+                        <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
+                            The current game will be stopped.
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <Button onClick={() => { dispatch({ type: 'RESET_GAME' }); setShowEndGameModal(false); }} style={{ width: '100%' }}>
+                                New Setup
+                            </Button>
+                            <Button variant="secondary" onClick={() => { dispatch({ type: 'RESTART_SAME_SETTINGS' }); setShowEndGameModal(false); }} style={{ width: '100%' }}>
+                                Restart (Same Settings)
+                            </Button>
+                            <Button variant="secondary" onClick={() => setShowEndGameModal(false)} style={{ width: '100%', marginTop: '8px', border: 'none' }}>
+                                Cancel
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}
