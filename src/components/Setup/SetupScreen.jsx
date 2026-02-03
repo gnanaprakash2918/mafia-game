@@ -1,18 +1,63 @@
 import React, { useState } from 'react';
 import { useGame } from '../../context/GameContext';
 import { Button } from '../Shared/Button';
-import { ROLES, CATEGORIES } from '../../constants/roles';
+import { ROLES, CATEGORIES, GAME_PHASES as GAMEPHASES } from '../../constants/roles';
 import { CustomRoleCreator } from './CustomRoleCreator';
 import { RoleInfoPopup } from '../Shared/RoleInfoPopup';
 
-const PlayerCountStep = ({ count, setCount, onNext }) => (
+const PlayerCountStep = ({ count, setCount, onNext, isQuickMode, setIsQuickMode, isAnonymousMode, setIsAnonymousMode, isGridMode, setIsGridMode }) => (
     <div className="setup-step fade-in">
         <h2 style={{ fontSize: '2rem', marginBottom: '32px', textAlign: 'center' }}>How many players?</h2>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px', marginBottom: '48px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px', marginBottom: '32px' }}>
             <Button variant="secondary" onClick={() => setCount(Math.max(3, count - 1))} style={{ width: '60px' }}>-</Button>
             <span style={{ fontSize: '4rem', fontWeight: 'bold', minWidth: '80px', textAlign: 'center' }}>{count}</span>
             <Button variant="secondary" onClick={() => setCount(count + 1)} style={{ width: '60px' }}>+</Button>
         </div>
+
+        {/* Quick Mode Toggle */}
+        <div style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg-tertiary)', padding: '16px', borderRadius: 'var(--radius-md)', cursor: 'pointer' }} onClick={() => setIsQuickMode(!isQuickMode)}>
+            <input
+                type="checkbox"
+                checked={isQuickMode}
+                onChange={(e) => setIsQuickMode(e.target.checked)}
+                style={{ width: '24px', height: '24px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+            />
+            <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>Quick Setup</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Skip names. Use Player 1, Player 2, etc.</div>
+            </div>
+        </div>
+
+        {/* Anonymous Mode Toggle */}
+        <div style={{ margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg-tertiary)', padding: '16px', borderRadius: 'var(--radius-md)', cursor: 'pointer' }} onClick={() => setIsAnonymousMode(!isAnonymousMode)}>
+            <input
+                type="checkbox"
+                checked={isAnonymousMode}
+                onChange={(e) => setIsAnonymousMode(e.target.checked)}
+                style={{ width: '24px', height: '24px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+            />
+            <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>Hide Partners</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Mafia won't see each other's names during reveal.</div>
+            </div>
+        </div>
+
+
+
+        {/* Grid Mode Toggle */}
+        <div style={{ margin: '0 0 32px 0', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg-tertiary)', padding: '16px', borderRadius: 'var(--radius-md)', cursor: 'pointer' }} onClick={() => setIsGridMode(!isGridMode)}>
+            <input
+                type="checkbox"
+                checked={isGridMode}
+                onChange={(e) => setIsGridMode(e.target.checked)}
+                style={{ width: '24px', height: '24px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+            />
+            <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>Card Pick Mode</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Spread cards out. Players pick their own role card.</div>
+            </div>
+        </div>
+
         <Button onClick={onNext}>Next: Choose Roles</Button>
     </div>
 );
@@ -32,20 +77,14 @@ const RoleSelectionStep = ({ playerCount, roles, setRoles, onNext, onBack }) => 
     };
 
     const handleCreateCustomRole = (newRole) => {
-        // NOTE: Direct mutation of ROLES constant is not ideal but used here for simple session persistence.
-        // In a real app, custom roles should be stored in GameContext settings.
         try {
-            // Attempt to write, but if it fails (strict mode), we ignore or handle.
-            // For now, we'll try to use a safer way if possible, or keep it if it works in non-strict.
-            // But to prevent white-screen crashes, we wrap in try-catch.
-            const roleWithCat = { ...newRole, category: CATEGORIES.CUSTOM };
-            ROLES[roleWithCat.id.toUpperCase()] = roleWithCat;
-            setRoles({ ...roles, [roleWithCat.id]: 1 });
+            // TODO: persist custom roles in GameContext instead of mutating global ROLES
+            console.warn("Custom role persistence requires GameContext update.");
+            alert("Custom roles are temporarily disabled during refactor for stability.");
             setShowCustomCreator(false);
             setExpandedCategory(CATEGORIES.CUSTOM);
         } catch (e) {
             console.error("Failed to add custom role", e);
-            alert("Custom roles are limited in this version.");
             setShowCustomCreator(false);
         }
     };
@@ -353,6 +392,48 @@ const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack }) => {
         setTimeout(() => setShowLoadModal(true), 100); // Refresh
     };
 
+    // Drag & Drop State
+    const [dragIndex, setDragIndex] = useState(null);
+    const [dropTarget, setDropTarget] = useState(null);
+
+    const handleDragStart = (e, index) => {
+        setDragIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', index);
+    };
+
+    const handleDragOver = (e, index) => {
+        e.preventDefault();
+        if (index !== dragIndex) {
+            setDropTarget(index);
+        }
+    };
+
+    const handleDragLeave = () => {
+        setDropTarget(null);
+    };
+
+    const handleDrop = (e, index) => {
+        e.preventDefault();
+        if (dragIndex === null || dragIndex === index) return;
+
+        const newNames = [...names];
+        const [draggedItem] = newNames.splice(dragIndex, 1);
+        newNames.splice(index, 0, draggedItem);
+        setNames(newNames);
+
+        setDragIndex(null);
+        setDropTarget(null);
+    };
+
+    const handleDragEnd = () => {
+        setDragIndex(null);
+        setDropTarget(null);
+    };
+
+    // Check for duplicates
+    const hasDuplicates = (new Set(names.filter(n => n.trim())).size !== names.filter(n => n.trim()).length);
+
     const templates = getSavedTemplates();
 
     return (
@@ -365,9 +446,45 @@ const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack }) => {
                 </div>
             </div>
 
-            <div style={{ height: '50vh', overflowY: 'auto', paddingRight: '12px', marginBottom: '24px' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '16px', textAlign: 'center' }}>
+                Drag rows to reorder
+            </p>
+
+            <div style={{ height: '45vh', overflowY: 'auto', paddingRight: '12px', marginBottom: '24px' }}>
                 {Array.from({ length: playerCount }).map((_, i) => (
-                    <div key={i} style={{ marginBottom: '12px' }}>
+                    <div
+                        key={i}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, i)}
+                        onDragOver={(e) => handleDragOver(e, i)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, i)}
+                        onDragEnd={handleDragEnd}
+                        style={{
+                            marginBottom: '8px',
+                            display: 'flex',
+                            gap: '8px',
+                            alignItems: 'center',
+                            padding: '4px',
+                            borderRadius: 'var(--radius-md)',
+                            background: dropTarget === i ? 'rgba(var(--primary-rgb), 0.2)' : 'transparent',
+                            border: dropTarget === i ? '2px dashed var(--primary)' : '2px dashed transparent',
+                            opacity: dragIndex === i ? 0.5 : 1,
+                            cursor: 'grab',
+                            transition: 'all 0.2s ease'
+                        }}
+                    >
+                        {/* Drag Handle */}
+                        <span style={{
+                            color: 'var(--text-muted)',
+                            minWidth: '32px',
+                            fontSize: '1.2rem',
+                            cursor: 'grab',
+                            userSelect: 'none'
+                        }}>
+                            =
+                        </span>
+                        <span style={{ color: 'var(--text-muted)', minWidth: '20px', fontSize: '0.9rem' }}>{i + 1}.</span>
                         <input
                             type="text"
                             placeholder={`Player ${i + 1}`}
@@ -377,8 +494,9 @@ const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack }) => {
                                 newNames[i] = e.target.value;
                                 setNames(newNames);
                             }}
+                            onDragStart={(e) => e.preventDefault()} // Prevent input from being dragged
                             style={{
-                                width: '100%', padding: '16px', background: 'var(--bg-tertiary)',
+                                flex: 1, padding: '14px 16px', background: 'var(--bg-tertiary)',
                                 border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-md)',
                                 color: 'white', outline: 'none', fontSize: '1rem'
                             }}
@@ -387,9 +505,15 @@ const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack }) => {
                 ))}
             </div>
 
+            {hasDuplicates && (
+                <div style={{ color: 'var(--danger)', marginBottom: '16px', fontWeight: 'bold', textAlign: 'center' }}>
+                    Duplicate names found!
+                </div>
+            )}
+
             <div style={{ display: 'flex', gap: '12px' }}>
                 <Button variant="secondary" onClick={onBack}>Back</Button>
-                <Button onClick={onNext} disabled={names.filter(n => n?.trim()).length !== playerCount}>Start Game</Button>
+                <Button onClick={onNext} disabled={names.filter(n => n?.trim()).length !== playerCount || hasDuplicates}>Start Game</Button>
             </div>
 
             {/* Load Template Modal */}
@@ -423,11 +547,16 @@ const NameEntryStep = ({ playerCount, names, setNames, onNext, onBack }) => {
 };
 
 export const SetupScreen = () => {
-    const { updateSettings, setPlayers, startGame } = useGame();
+    const { updateSettings, setPlayers, nextPhase } = useGame(); // Uses nextPhase for Preview
     const [step, setStep] = useState(1);
     const [count, setCount] = useState(5);
     const [roles, setRoles] = useState({});
     const [names, setNames] = useState([]);
+    const [isQuickMode, setIsQuickMode] = useState(false);
+    const [isAnonymousMode, setIsAnonymousMode] = useState(false);
+
+    // Removed: Fast Mode state
+    const [isGridMode, setIsGridMode] = useState(false);
     const [timers, setTimers] = useState({
         night: 15, day: 5, discussion: 180, voting: 60, unlimited: false, autoStartNight: false
     });
@@ -442,35 +571,58 @@ export const SetupScreen = () => {
     }, [count]);
 
     const handleFinishSetup = () => {
+        let finalNames = names;
+        // If Pocket Party (Quick Mode), generate default names
+        if (isQuickMode) {
+            finalNames = Array.from({ length: count }, (_, i) => `Player ${i + 1}`);
+        }
+
         const playerList = [];
         let rolePool = [];
         Object.entries(roles).forEach(([roleId, quantity]) => {
             for (let i = 0; i < quantity; i++) rolePool.push(roleId);
         });
-        rolePool = rolePool.sort(() => Math.random() - 0.5);
 
-        names.forEach((name, index) => {
+        // Fisher-Yates Shuffle (True Randomness)
+        for (let i = rolePool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [rolePool[i], rolePool[j]] = [rolePool[j], rolePool[i]];
+        }
+
+        finalNames.forEach((name, index) => {
+            if (index >= count) return;
             const roleId = rolePool[index];
             const roleDef = ROLES[Object.keys(ROLES).find(k => ROLES[k].id === roleId)];
             playerList.push({
                 id: `p-${index}-${Date.now()}`,
                 name: name.trim() || `Player ${index + 1}`,
-                role: roleDef,
+                role: roleDef || { ...ROLES.VILLAGER, name: 'Unknown' }, // Fallback
                 isAlive: true,
                 status: {}
             });
         });
 
-        updateSettings({ playerCount: count, roles, timers, nightSteps });
+        updateSettings({ playerCount: count, roles, timers, nightSteps, anonymousMode: isAnonymousMode, gridMode: isGridMode });
         setPlayers(playerList);
-        startGame();
+
+        // Go to PREVIEW first, not Reveal
+        nextPhase(GAMEPHASES.REFEREE_PREVIEW || 'REFEREE_PREVIEW');
+    };
+
+    // Helper to advance from step 3 (Timers)
+    const handleTimerNext = () => {
+        if (isQuickMode) {
+            handleFinishSetup();
+        } else {
+            setStep(4);
+        }
     };
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            {step === 1 && <PlayerCountStep count={count} setCount={setCount} onNext={() => setStep(2)} />}
+            {step === 1 && <PlayerCountStep count={count} setCount={setCount} isQuickMode={isQuickMode} setIsQuickMode={setIsQuickMode} isAnonymousMode={isAnonymousMode} setIsAnonymousMode={setIsAnonymousMode} isGridMode={isGridMode} setIsGridMode={setIsGridMode} onNext={() => setStep(2)} />}
             {step === 2 && <RoleSelectionStep playerCount={count} roles={roles} setRoles={setRoles} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
-            {step === 3 && <TimerConfigStep timers={timers} setTimers={setTimers} nightSteps={nightSteps} setNightSteps={setNightSteps} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
+            {step === 3 && <TimerConfigStep timers={timers} setTimers={setTimers} nightSteps={nightSteps} setNightSteps={setNightSteps} onNext={handleTimerNext} onBack={() => setStep(2)} />}
             {step === 4 && <NameEntryStep playerCount={count} names={names} setNames={setNames} onNext={handleFinishSetup} onBack={() => setStep(3)} />}
         </div>
     );

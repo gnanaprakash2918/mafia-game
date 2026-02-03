@@ -37,90 +37,81 @@ export const RoleReveal = () => {
 
     if (!currentPlayer) return null;
 
+    // Removed: const isFastMode = state.settings.fastMode;
+
     return (
         <div style={{
             height: '100%',
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center',
             justifyContent: 'center',
+            alignItems: 'center',
+            padding: '24px',
             textAlign: 'center',
-            padding: '24px'
+            animation: 'fadeIn 0.3s ease'
         }}>
-            <div className="fade-in" style={{ width: '100%', maxWidth: '400px' }}>
-                {!isRevealed ? (
-                    <>
-                        <h2 style={{ fontSize: '1.8rem', marginBottom: '16px', color: 'var(--text-muted)' }}>Pass the phone to</h2>
-                        <h1 style={{ fontSize: '3rem', color: 'var(--primary)', marginBottom: '32px', fontWeight: '800' }}>
-                            {currentPlayer.name}
-                        </h1>
-                        <p style={{ marginBottom: '40px', color: 'var(--text-muted)', fontSize: '1rem' }}>
-                            Make sure no one else is looking!
-                        </p>
+            <h2 style={{ fontSize: '2rem', marginBottom: '16px' }}>{currentPlayer.name}</h2>
 
-                        {/* SWIPE TO REVEAL SLIDER */}
-                        <div style={{
-                            background: 'var(--bg-tertiary)',
-                            borderRadius: 'var(--radius-lg)',
-                            padding: '8px',
-                            position: 'relative',
-                            marginBottom: '24px'
-                        }}>
-                            <div style={{
-                                position: 'absolute',
-                                top: '50%',
-                                left: '50%',
-                                transform: 'translate(-50%, -50%)',
-                                color: 'rgba(255,255,255,0.3)',
-                                fontWeight: 'bold',
-                                pointerEvents: 'none',
-                                fontSize: '0.9rem'
-                            }}>
-                                → Slide to Reveal →
-                            </div>
-                            <input
-                                ref={sliderRef}
-                                type="range"
-                                min="0"
-                                max="100"
-                                value={slideProgress}
-                                onChange={handleSliderChange}
-                                onMouseUp={() => slideProgress < 95 && setSlideProgress(0)}
-                                onTouchEnd={() => slideProgress < 95 && setSlideProgress(0)}
-                                style={{
-                                    width: '100%',
-                                    height: '50px',
-                                    appearance: 'none',
-                                    background: `linear-gradient(to right, var(--primary) ${slideProgress}%, transparent ${slideProgress}%)`,
-                                    borderRadius: 'var(--radius-md)',
-                                    cursor: 'pointer',
-                                    outline: 'none'
-                                }}
-                            />
-                        </div>
-                    </>
-                ) : (
-                    <div className="card-flip-enter" style={{
-                        background: 'linear-gradient(145deg, var(--bg-secondary), var(--bg-tertiary))',
-                        padding: '32px 24px',
+            <div style={{ visibility: isRevealed ? 'visible' : 'hidden', opacity: isRevealed ? 1 : 0, transition: 'opacity 0.3s' }}>
+                <h1 style={{ fontSize: '3.5rem', color: currentPlayer.role.color || 'var(--primary)', marginBottom: '16px' }}>
+                    {currentPlayer.role.name}
+                </h1>
+                <div style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.1)', borderRadius: '20px', display: 'inline-block', marginBottom: '32px' }}>
+                    {currentPlayer.role.team === 'MAFIA' ? 'Mafia Team' : 'Village Team'}
+                </div>
+            </div>
+
+            <div style={{ width: '100%', maxWidth: '400px' }}>
+                {!isRevealed && (
+                    <div style={{
+                        background: 'var(--bg-tertiary)',
                         borderRadius: 'var(--radius-lg)',
-                        border: `2px solid ${currentPlayer.role.color || 'var(--primary)'}`,
-                        boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+                        padding: '8px',
+                        position: 'relative',
+                        marginBottom: '24px'
                     }}>
-                        <h2 style={{ fontSize: '1.2rem', marginBottom: '16px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '2px' }}>You are the</h2>
-                        <h1 style={{
-                            fontSize: '3rem',
-                            color: currentPlayer.role.color || (currentPlayer.role.team === 'MAFIA' ? 'var(--danger)' : 'var(--success)'),
-                            marginBottom: '16px',
-                            textShadow: '0 0 30px rgba(0,0,0,0.5)'
+                        <div style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            color: 'rgba(255,255,255,0.7)', // Increased contrast
+                            transition: 'opacity 0.2s', // Smooth transition
+                            opacity: 1 - (slideProgress / 100), // Fade based on slide
+                            fontWeight: 'bold',
+                            pointerEvents: 'none',
+                            fontSize: '0.9rem'
                         }}>
-                            {currentPlayer.role.name}
-                        </h1>
+                            Slide to Reveal
+                        </div>
+                        <input
+                            ref={sliderRef}
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={slideProgress}
+                            onChange={handleSliderChange}
+                            onMouseUp={() => slideProgress < 95 && setSlideProgress(0)}
+                            onTouchEnd={() => slideProgress < 95 && setSlideProgress(0)}
+                            style={{
+                                width: '100%',
+                                height: '50px',
+                                appearance: 'none',
+                                background: `linear-gradient(to right, var(--primary) ${slideProgress}%, transparent ${slideProgress}%)`,
+                                borderRadius: 'var(--radius-md)',
+                                cursor: 'pointer',
+                                outline: 'none'
+                            }}
+                        />
+                    </div>
+                )}
+                {isRevealed && (
+                    <div className="fade-in">
                         <p style={{ fontSize: '1.1rem', marginBottom: '24px', lineHeight: '1.6', color: 'var(--text-muted)' }}>
                             {currentPlayer.role.description}
                         </p>
 
-                        {partners.length > 0 && (
+                        {!state.settings.anonymousMode && partners.length > 0 && (
                             <div style={{
                                 marginBottom: '32px',
                                 padding: '16px',
@@ -136,7 +127,7 @@ export const RoleReveal = () => {
                         )}
 
                         <Button onClick={handleNext} style={{ marginTop: '16px' }}>
-                            {currentTurnIndex < players.length - 1 ? 'Pass to Next Player' : 'Start Night'}
+                            {currentTurnIndex < players.length - 1 ? 'Hide & Pass' : 'Pass to Referee'}
                         </Button>
                     </div>
                 )}
