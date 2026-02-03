@@ -38,7 +38,7 @@ export const useTimer = (initialSeconds, unlimited = false, onComplete) => {
         }
 
         return () => clearInterval(intervalRef.current);
-    }, [isRunning, unlimited, timeLeft, onComplete]);
+    }, [isRunning, unlimited]); // Removed timeLeft and onComplete (stable ref usually, or keep onComplete if stable)
 
     // Format time as MM:SS
     const formattedTime = unlimited
