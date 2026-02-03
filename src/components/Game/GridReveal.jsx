@@ -56,7 +56,7 @@ export const GridReveal = () => {
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px' }}>
             <h2 style={{ marginBottom: '8px' }}>Pick a Card</h2>
             <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
-                {currentPlayer.name}, pick a card!
+                Next player, pick a card!
             </p>
 
             {/* THE GRID */}
